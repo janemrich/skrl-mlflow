@@ -29,8 +29,10 @@ TD3_DEFAULT_CONFIG = {
     "learning_rate_scheduler": None,        # learning rate scheduler class (see torch.optim.lr_scheduler)
     "learning_rate_scheduler_kwargs": {},   # learning rate scheduler's kwargs (e.g. {"step_size": 1e-3})
 
+    "observation_preprocessor": None,       # observation preprocessor class (see skrl.resources.preprocessors)
+    "observation_preprocessor_kwargs": {},  # observation preprocessor's kwargs (e.g. {"size": env.observation_space})
     "state_preprocessor": None,             # state preprocessor class (see skrl.resources.preprocessors)
-    "state_preprocessor_kwargs": {},        # state preprocessor's kwargs (e.g. {"size": env.observation_space})
+    "state_preprocessor_kwargs": {},        # state preprocessor's kwargs (e.g. {"size": env.state_space})
 
     "random_timesteps": 0,          # random exploration steps
     "learning_starts": 0,           # learning starts after this many steps
@@ -71,34 +73,28 @@ TD3_DEFAULT_CONFIG = {
 class TD3_RNN(Agent):
     def __init__(
         self,
-        models: Mapping[str, Model],
-        memory: Optional[Union[Memory, Tuple[Memory]]] = None,
-        observation_space: Optional[Union[int, Tuple[int], gymnasium.Space]] = None,
-        action_space: Optional[Union[int, Tuple[int], gymnasium.Space]] = None,
+        *,
+        models: Optional[Mapping[str, Model]] = None,
+        memory: Optional[Memory] = None,
+        observation_space: Optional[gymnasium.Space] = None,
+        state_space: Optional[gymnasium.Space] = None,
+        action_space: Optional[gymnasium.Space] = None,
         device: Optional[Union[str, torch.device]] = None,
         cfg: Optional[dict] = None,
     ) -> None:
-        """Twin Delayed DDPG (TD3) with support for Recurrent Neural Networks (RNN, GRU, LSTM, etc.)
+        """Twin Delayed DDPG (TD3) with support for Recurrent Neural Networks (RNN, GRU, LSTM, etc.).
 
         https://arxiv.org/abs/1802.09477
 
-        :param models: Models used by the agent
-        :type models: dictionary of skrl.models.torch.Model
-        :param memory: Memory to storage the transitions.
-                       If it is a tuple, the first element will be used for training and
-                       for the rest only the environment transitions will be added
-        :type memory: skrl.memory.torch.Memory, list of skrl.memory.torch.Memory or None
-        :param observation_space: Observation/state space or shape (default: ``None``)
-        :type observation_space: int, tuple or list of int, gymnasium.Space or None, optional
-        :param action_space: Action space or shape (default: ``None``)
-        :type action_space: int, tuple or list of int, gymnasium.Space or None, optional
-        :param device: Device on which a tensor/array is or will be allocated (default: ``None``).
-                       If None, the device will be either ``"cuda"`` if available or ``"cpu"``
-        :type device: str or torch.device, optional
-        :param cfg: Configuration dictionary
-        :type cfg: dict
+        :param models: Agent's models.
+        :param memory: Memory to storage agent's data and environment transitions.
+        :param observation_space: Observation space.
+        :param state_space: State space.
+        :param action_space: Action space.
+        :param device: Data allocation and computation device. If not specified, the default device will be used.
+        :param cfg: Agent's configuration.
 
-        :raises KeyError: If the models dictionary is missing a required key
+        :raises KeyError: If a configuration key is missing.
         """
         _cfg = copy.deepcopy(TD3_DEFAULT_CONFIG)
         _cfg.update(cfg if cfg is not None else {})
@@ -106,6 +102,7 @@ class TD3_RNN(Agent):
             models=models,
             memory=memory,
             observation_space=observation_space,
+            state_space=state_space,
             action_space=action_space,
             device=device,
             cfg=_cfg,
@@ -159,6 +156,7 @@ class TD3_RNN(Agent):
         self._critic_learning_rate = self.cfg["critic_learning_rate"]
         self._learning_rate_scheduler = self.cfg["learning_rate_scheduler"]
 
+        self._observation_preprocessor = self.cfg["observation_preprocessor"]
         self._state_preprocessor = self.cfg["state_preprocessor"]
 
         self._random_timesteps = self.cfg["random_timesteps"]
@@ -208,27 +206,49 @@ class TD3_RNN(Agent):
             self.checkpoint_modules["critic_optimizer"] = self.critic_optimizer
 
         # set up preprocessors
+        # - observations
+        if self._observation_preprocessor:
+            self._observation_preprocessor = self._observation_preprocessor(
+                **self.cfg["observation_preprocessor_kwargs"]
+            )
+            self.checkpoint_modules["observation_preprocessor"] = self._observation_preprocessor
+        else:
+            self._observation_preprocessor = self._empty_preprocessor
+        # - states
         if self._state_preprocessor:
             self._state_preprocessor = self._state_preprocessor(**self.cfg["state_preprocessor_kwargs"])
             self.checkpoint_modules["state_preprocessor"] = self._state_preprocessor
         else:
             self._state_preprocessor = self._empty_preprocessor
 
-    def init(self, trainer_cfg: Optional[Mapping[str, Any]] = None) -> None:
-        """Initialize the agent"""
+    def init(self, *, trainer_cfg: Optional[Mapping[str, Any]] = None) -> None:
+        """Initialize the agent.
+
+        :param trainer_cfg: Trainer configuration.
+        """
         super().init(trainer_cfg=trainer_cfg)
-        self.set_mode("eval")
 
         # create tensors in memory
         if self.memory is not None:
-            self.memory.create_tensor(name="states", size=self.observation_space, dtype=torch.float32)
-            self.memory.create_tensor(name="next_states", size=self.observation_space, dtype=torch.float32)
+            self.memory.create_tensor(name="observations", size=self.observation_space, dtype=torch.float32)
+            self.memory.create_tensor(name="next_observations", size=self.observation_space, dtype=torch.float32)
+            self.memory.create_tensor(name="states", size=self.state_space, dtype=torch.float32)
+            self.memory.create_tensor(name="next_states", size=self.state_space, dtype=torch.float32)
             self.memory.create_tensor(name="actions", size=self.action_space, dtype=torch.float32)
             self.memory.create_tensor(name="rewards", size=1, dtype=torch.float32)
             self.memory.create_tensor(name="terminated", size=1, dtype=torch.bool)
             self.memory.create_tensor(name="truncated", size=1, dtype=torch.bool)
 
-            self._tensors_names = ["states", "actions", "rewards", "next_states", "terminated", "truncated"]
+            self._tensors_names = [
+                "observations",
+                "states",
+                "actions",
+                "rewards",
+                "next_observations",
+                "next_states",
+                "terminated",
+                "truncated",
+            ]
 
         # RNN specifications
         self._rnn = False  # flag to indicate whether RNN is available
@@ -254,33 +274,37 @@ class TD3_RNN(Agent):
             self.clip_actions_min = torch.tensor(self.action_space.low, device=self.device)
             self.clip_actions_max = torch.tensor(self.action_space.high, device=self.device)
 
-    def act(self, states: torch.Tensor, timestep: int, timesteps: int) -> torch.Tensor:
-        """Process the environment's states to make a decision (actions) using the main policy
+    def act(
+        self, observations: torch.Tensor, states: Union[torch.Tensor, None], *, timestep: int, timesteps: int
+    ) -> Tuple[torch.Tensor, Mapping[str, Union[torch.Tensor, Any]]]:
+        """Process the environment's observations/states to make a decision (actions) using the main policy.
 
-        :param states: Environment's states
-        :type states: torch.Tensor
-        :param timestep: Current timestep
-        :type timestep: int
-        :param timesteps: Number of timesteps
-        :type timesteps: int
+        :param observations: Environment observations.
+        :param states: Environment states.
+        :param timestep: Current timestep.
+        :param timesteps: Number of timesteps.
 
-        :return: Actions
-        :rtype: torch.Tensor
+        :return: Agent output. The first component is the expected action/value returned by the agent.
+            The second component is a dictionary containing extra output values according to the model.
         """
-        rnn = {"rnn": self._rnn_initial_states["policy"]} if self._rnn else {}
+        inputs = {
+            "observations": self._observation_preprocessor(observations),
+            "states": self._state_preprocessor(states),
+        }
+        inputs.update({"rnn": self._rnn_initial_states["policy"]} if self._rnn else {})
 
         # sample random actions
         if timestep < self._random_timesteps:
-            return self.policy.random_act({"states": self._state_preprocessor(states), **rnn}, role="policy")
+            return self.policy.random_act(inputs, role="policy")
 
         # sample deterministic actions
         with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
-            actions, _, outputs = self.policy.act({"states": self._state_preprocessor(states), **rnn}, role="policy")
+            actions, outputs = self.policy.act(inputs, role="policy")
 
         if self._rnn:
             self._rnn_final_states["policy"] = outputs.get("rnn", [])
 
-        # add exloration noise
+        # add exploration noise
         if self._exploration_noise is not None:
             # sample noises
             noises = self._exploration_noise.sample(actions.shape)
@@ -312,13 +336,16 @@ class TD3_RNN(Agent):
                 self.track_data("Exploration / Exploration noise (min)", 0)
                 self.track_data("Exploration / Exploration noise (mean)", 0)
 
-        return actions, None, outputs
+        return actions, outputs
 
     def record_transition(
         self,
+        *,
+        observations: torch.Tensor,
         states: torch.Tensor,
         actions: torch.Tensor,
         rewards: torch.Tensor,
+        next_observations: torch.Tensor,
         next_states: torch.Tensor,
         terminated: torch.Tensor,
         truncated: torch.Tensor,
@@ -326,29 +353,32 @@ class TD3_RNN(Agent):
         timestep: int,
         timesteps: int,
     ) -> None:
-        """Record an environment transition in memory
+        """Record an environment transition in memory.
 
-        :param states: Observations/states of the environment used to make the decision
-        :type states: torch.Tensor
-        :param actions: Actions taken by the agent
-        :type actions: torch.Tensor
-        :param rewards: Instant rewards achieved by the current actions
-        :type rewards: torch.Tensor
-        :param next_states: Next observations/states of the environment
-        :type next_states: torch.Tensor
-        :param terminated: Signals to indicate that episodes have terminated
-        :type terminated: torch.Tensor
-        :param truncated: Signals to indicate that episodes have been truncated
-        :type truncated: torch.Tensor
-        :param infos: Additional information about the environment
-        :type infos: Any type supported by the environment
-        :param timestep: Current timestep
-        :type timestep: int
-        :param timesteps: Number of timesteps
-        :type timesteps: int
+        :param observations: Environment observations.
+        :param states: Environment states.
+        :param actions: Actions taken by the agent.
+        :param rewards: Instant rewards achieved by the current actions.
+        :param next_observations: Next environment observations.
+        :param next_states: Next environment states.
+        :param terminated: Signals that indicate episodes have terminated.
+        :param truncated: Signals that indicate episodes have been truncated.
+        :param infos: Additional information about the environment.
+        :param timestep: Current timestep.
+        :param timesteps: Number of timesteps.
         """
         super().record_transition(
-            states, actions, rewards, next_states, terminated, truncated, infos, timestep, timesteps
+            observations=observations,
+            states=states,
+            actions=actions,
+            rewards=rewards,
+            next_observations=next_observations,
+            next_states=next_states,
+            terminated=terminated,
+            truncated=truncated,
+            infos=infos,
+            timestep=timestep,
+            timesteps=timesteps,
         )
 
         if self.memory is not None:
@@ -365,24 +395,16 @@ class TD3_RNN(Agent):
 
             # storage transition in memory
             self.memory.add_samples(
+                observations=observations,
                 states=states,
                 actions=actions,
                 rewards=rewards,
+                next_observations=next_observations,
                 next_states=next_states,
                 terminated=terminated,
                 truncated=truncated,
                 **rnn_states,
             )
-            for memory in self.secondary_memories:
-                memory.add_samples(
-                    states=states,
-                    actions=actions,
-                    rewards=rewards,
-                    next_states=next_states,
-                    terminated=terminated,
-                    truncated=truncated,
-                    **rnn_states,
-                )
 
         # update RNN states
         if self._rnn:
@@ -394,39 +416,33 @@ class TD3_RNN(Agent):
 
             self._rnn_initial_states = self._rnn_final_states
 
-    def pre_interaction(self, timestep: int, timesteps: int) -> None:
-        """Callback called before the interaction with the environment
+    def pre_interaction(self, *, timestep: int, timesteps: int) -> None:
+        """Method called before the interaction with the environment.
 
-        :param timestep: Current timestep
-        :type timestep: int
-        :param timesteps: Number of timesteps
-        :type timesteps: int
+        :param timestep: Current timestep.
+        :param timesteps: Number of timesteps.
         """
         pass
 
-    def post_interaction(self, timestep: int, timesteps: int) -> None:
-        """Callback called after the interaction with the environment
+    def post_interaction(self, *, timestep: int, timesteps: int) -> None:
+        """Method called after the interaction with the environment.
 
-        :param timestep: Current timestep
-        :type timestep: int
-        :param timesteps: Number of timesteps
-        :type timesteps: int
+        :param timestep: Current timestep.
+        :param timesteps: Number of timesteps.
         """
         if timestep >= self._learning_starts:
-            self.set_mode("train")
-            self._update(timestep, timesteps)
-            self.set_mode("eval")
+            self.enable_training_mode(True)
+            self.update(timestep=timestep, timesteps=timesteps)
+            self.enable_training_mode(False)
 
         # write tracking data and checkpoints
-        super().post_interaction(timestep, timesteps)
+        super().post_interaction(timestep=timestep, timesteps=timesteps)
 
-    def _update(self, timestep: int, timesteps: int) -> None:
-        """Algorithm's main update step
+    def update(self, *, timestep: int, timesteps: int) -> None:
+        """Algorithm's main update step.
 
-        :param timestep: Current timestep
-        :type timestep: int
-        :param timesteps: Number of timesteps
-        :type timesteps: int
+        :param timestep: Current timestep.
+        :param timesteps: Number of timesteps.
         """
 
         # gradient steps
@@ -434,9 +450,11 @@ class TD3_RNN(Agent):
 
             # sample a batch from memory
             (
+                sampled_observations,
                 sampled_states,
                 sampled_actions,
                 sampled_rewards,
+                sampled_next_observations,
                 sampled_next_states,
                 sampled_terminated,
                 sampled_truncated,
@@ -457,15 +475,20 @@ class TD3_RNN(Agent):
                 }
 
             with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
-
-                sampled_states = self._state_preprocessor(sampled_states, train=True)
-                sampled_next_states = self._state_preprocessor(sampled_next_states, train=True)
+                inputs = {
+                    "observations": self._observation_preprocessor(sampled_observations, train=True),
+                    "states": self._state_preprocessor(sampled_states, train=True),
+                    **rnn_policy,
+                }
+                next_inputs = {
+                    "observations": self._observation_preprocessor(sampled_next_observations, train=True),
+                    "states": self._state_preprocessor(sampled_next_states, train=True),
+                    **rnn_policy,
+                }
 
                 with torch.no_grad():
                     # target policy smoothing
-                    next_actions, _, _ = self.target_policy.act(
-                        {"states": sampled_next_states, **rnn_policy}, role="target_policy"
-                    )
+                    next_actions, _ = self.target_policy.act(next_inputs, role="target_policy")
                     if self._smooth_regularization_noise is not None:
                         noises = torch.clamp(
                             self._smooth_regularization_noise.sample(next_actions.shape),
@@ -476,13 +499,11 @@ class TD3_RNN(Agent):
                         next_actions.clamp_(min=self.clip_actions_min, max=self.clip_actions_max)
 
                     # compute target values
-                    target_q1_values, _, _ = self.target_critic_1.act(
-                        {"states": sampled_next_states, "taken_actions": next_actions, **rnn_policy},
-                        role="target_critic_1",
+                    target_q1_values, _ = self.target_critic_1.act(
+                        {**next_inputs, "taken_actions": next_actions}, role="target_critic_1"
                     )
-                    target_q2_values, _, _ = self.target_critic_2.act(
-                        {"states": sampled_next_states, "taken_actions": next_actions, **rnn_policy},
-                        role="target_critic_2",
+                    target_q2_values, _ = self.target_critic_2.act(
+                        {**next_inputs, "taken_actions": next_actions}, role="target_critic_2"
                     )
                     target_q_values = torch.min(target_q1_values, target_q2_values)
                     target_values = (
@@ -493,12 +514,8 @@ class TD3_RNN(Agent):
                     )
 
                 # compute critic loss
-                critic_1_values, _, _ = self.critic_1.act(
-                    {"states": sampled_states, "taken_actions": sampled_actions, **rnn_policy}, role="critic_1"
-                )
-                critic_2_values, _, _ = self.critic_2.act(
-                    {"states": sampled_states, "taken_actions": sampled_actions, **rnn_policy}, role="critic_2"
-                )
+                critic_1_values, _ = self.critic_1.act({**inputs, "taken_actions": sampled_actions}, role="critic_1")
+                critic_2_values, _ = self.critic_2.act({**inputs, "taken_actions": sampled_actions}, role="critic_2")
 
                 critic_loss = F.mse_loss(critic_1_values, target_values) + F.mse_loss(critic_2_values, target_values)
 
@@ -524,10 +541,8 @@ class TD3_RNN(Agent):
 
                 with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
                     # compute policy (actor) loss
-                    actions, _, _ = self.policy.act({"states": sampled_states, **rnn_policy}, role="policy")
-                    critic_values, _, _ = self.critic_1.act(
-                        {"states": sampled_states, "taken_actions": actions, **rnn_policy}, role="critic_1"
-                    )
+                    actions, _ = self.policy.act(inputs, role="policy")
+                    critic_values, _ = self.critic_1.act({**inputs, "taken_actions": actions}, role="critic_1")
 
                     policy_loss = -critic_values.mean()
 

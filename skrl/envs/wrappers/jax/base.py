@@ -77,7 +77,7 @@ class Wrapper(object):
         """
         raise NotImplementedError
 
-    def state(self) -> Union[np.ndarray, jax.Array]:
+    def state(self) -> Union[np.ndarray, jax.Array, None]:
         """Get the environment state
 
         :raises NotImplementedError: Not implemented

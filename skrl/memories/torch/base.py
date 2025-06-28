@@ -131,7 +131,7 @@ class Memory:
     def create_tensor(
         self,
         name: str,
-        size: Union[int, Tuple[int], gymnasium.Space],
+        size: Union[int, Tuple[int], gymnasium.Space, None],
         dtype: Optional[torch.dtype] = None,
         keep_dimensions: bool = False,
     ) -> bool:
@@ -156,6 +156,9 @@ class Memory:
         :return: True if the tensor was created, otherwise False
         :rtype: bool
         """
+        # don't create a tensor for None
+        if size is None:
+            return False
         # compute data size
         if not keep_dimensions:
             size = compute_space_size(size, occupied_size=True)
@@ -228,19 +231,19 @@ class Memory:
             )
 
         # dimensions and shapes of the tensors (assume all tensors have the dimensions of the first tensor)
-        tmp = tensors.get("states", tensors[next(iter(tensors))])  # ask for states first
+        tmp = tensors.get("observations", tensors[next(iter(tensors))])  # ask for observations first
         dim, shape = tmp.ndim, tmp.shape
 
         # multi environment (number of environments equals num_envs)
         if dim > 1 and shape[0] == self.num_envs:
             for name, tensor in tensors.items():
-                if name in self.tensors:
+                if name in self.tensors and tensor is not None:
                     self.tensors[name][self.memory_index].copy_(tensor)
             self.memory_index += 1
         # multi environment (number of environments less than num_envs)
         elif dim > 1 and shape[0] < self.num_envs:
             for name, tensor in tensors.items():
-                if name in self.tensors:
+                if name in self.tensors and tensor is not None:
                     self.tensors[name][self.memory_index, self.env_index : self.env_index + tensor.shape[0]].copy_(
                         tensor
                     )
@@ -248,7 +251,7 @@ class Memory:
         # single environment - multi sample (number of environments greater than num_envs (num_envs = 1))
         elif dim > 1 and self.num_envs == 1:
             for name, tensor in tensors.items():
-                if name in self.tensors:
+                if name in self.tensors and tensor is not None:
                     num_samples = min(shape[0], self.memory_size - self.memory_index)
                     remaining_samples = shape[0] - num_samples
                     # copy the first n samples
@@ -263,7 +266,7 @@ class Memory:
         # single environment
         elif dim == 1:
             for name, tensor in tensors.items():
-                if name in self.tensors:
+                if name in self.tensors and tensor is not None:
                     self.tensors[name][self.memory_index, self.env_index].copy_(tensor)
             self.env_index += 1
         else:
@@ -321,8 +324,11 @@ class Memory:
         """
         if mini_batches > 1:
             batches = np.array_split(indexes, mini_batches)
-            return [[self.tensors_view[name][batch] for name in names] for batch in batches]
-        return [[self.tensors_view[name][indexes] for name in names]]
+            return [
+                [self.tensors_view[name][batch] if name in self.tensors else None for name in names]
+                for batch in batches
+            ]
+        return [[self.tensors_view[name][indexes] if name in self.tensors else None for name in names]]
 
     def sample_all(
         self, names: Tuple[str], mini_batches: int = 1, sequence_length: int = 1
@@ -344,15 +350,23 @@ class Memory:
         if sequence_length > 1:
             if mini_batches > 1:
                 batches = np.array_split(self.all_sequence_indexes, mini_batches)
-                return [[self.tensors_view[name][batch] for name in names] for batch in batches]
-            return [[self.tensors_view[name][self.all_sequence_indexes] for name in names]]
+                return [
+                    [self.tensors_view[name][batch] if name in self.tensors else None for name in names]
+                    for batch in batches
+                ]
+            return [
+                [self.tensors_view[name][self.all_sequence_indexes] if name in self.tensors else None for name in names]
+            ]
 
         # default order
         if mini_batches > 1:
             batch_size = (self.memory_size * self.num_envs) // mini_batches
             batches = [(batch_size * i, batch_size * (i + 1)) for i in range(mini_batches)]
-            return [[self.tensors_view[name][batch[0] : batch[1]] for name in names] for batch in batches]
-        return [[self.tensors_view[name] for name in names]]
+            return [
+                [self.tensors_view[name][batch[0] : batch[1]] if name in self.tensors else None for name in names]
+                for batch in batches
+            ]
+        return [[self.tensors_view[name] if name in self.tensors else None for name in names]]
 
     def get_sampling_indexes(self) -> Union[tuple, np.ndarray, torch.Tensor]:
         """Get the last indexes used for sampling

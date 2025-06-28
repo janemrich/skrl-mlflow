@@ -68,7 +68,7 @@ class Wrapper(object):
         """
         raise NotImplementedError
 
-    def state(self) -> torch.Tensor:
+    def state(self) -> Union[torch.Tensor, None]:
         """Get the environment state
 
         :raises NotImplementedError: Not implemented
