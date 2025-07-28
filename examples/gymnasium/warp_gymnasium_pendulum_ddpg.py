@@ -9,10 +9,9 @@ from skrl.memories.warp import RandomMemory
 from skrl.models.warp import DeterministicMixin, Model
 from skrl.resources.noises.warp import OrnsteinUhlenbeckNoise
 from skrl.trainers.warp import SequentialTrainer
-from skrl.utils import set_seed, warp_utils
+from skrl.utils import set_seed
+from skrl.utils.framework.warp import concatenate, scalar_mul
 
-
-TRAIN = True
 
 # seed for reproducibility
 set_seed()  # e.g. `set_seed(42)` for fixed seed
@@ -37,16 +36,17 @@ class Actor(DeterministicMixin, Model):
         self.__post_init__()
 
     def compute(self, inputs, role):
+        # Pendulum-v1 action_space is -2 to 2
         x = self.net(inputs["observations"])
-        return warp_utils.scalar_multiplication(x, 2.0), {}
+        return scalar_mul(x, 2.0), {}
 
 
 class Critic(DeterministicMixin, Model):
-    def __init__(self, observation_space, state_space, action_space, device, clip_actions=False):
+    def __init__(self, observation_space, state_space, action_space, device):
         Model.__init__(
             self, observation_space=observation_space, state_space=state_space, action_space=action_space, device=device
         )
-        DeterministicMixin.__init__(self, clip_actions=clip_actions)
+        DeterministicMixin.__init__(self)
 
         self.net = nn.Sequential(
             nn.Linear(self.num_observations + self.num_actions, 32),
@@ -58,14 +58,14 @@ class Critic(DeterministicMixin, Model):
         self.__post_init__()
 
     def compute(self, inputs, role):
-        x = self.net(warp_utils.concatenate([inputs["observations"], inputs["taken_actions"]], axis=1))
+        x = self.net(concatenate([inputs["observations"], inputs["taken_actions"]], axis=1))
         return x, {}
 
 
 # load and wrap the gymnasium environment.
 # note: the environment version may change depending on the gymnasium version
 try:
-    env = gym.make("Pendulum-v1", render_mode="human" if not TRAIN else None)
+    env = gym.make("Pendulum-v1")
 except (gym.error.DeprecatedEnv, gym.error.VersionNotFound) as e:
     env_id = [spec for spec in gym.envs.registry if spec.startswith("Pendulum-v")][0]
     print("Pendulum-v1 not found. Trying {}".format(env_id))
@@ -77,6 +77,7 @@ device = env.device
 
 # instantiate a memory as experience replay
 memory = RandomMemory(memory_size=15000, num_envs=env.num_envs, device=device, replacement=False)
+
 
 # instantiate the agent's models (function approximators).
 # DDPG requires 4 models, visit its documentation for more details
@@ -100,8 +101,8 @@ cfg["batch_size"] = 100
 cfg["random_timesteps"] = 100
 cfg["learning_starts"] = 100
 # logging to TensorBoard and write checkpoints (in timesteps)
-cfg["experiment"]["write_interval"] = 75 if TRAIN else 0
-cfg["experiment"]["checkpoint_interval"] = 750 if TRAIN else 0
+cfg["experiment"]["write_interval"] = "auto"
+cfg["experiment"]["checkpoint_interval"] = "auto"
 cfg["experiment"]["directory"] = "runs/warp/Pendulum"
 
 agent = DDPG(
@@ -116,14 +117,8 @@ agent = DDPG(
 
 
 # configure and instantiate the RL trainer
-cfg_trainer = {"timesteps": 50000, "headless": TRAIN}
+cfg_trainer = {"timesteps": 15000, "headless": True}
 trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=[agent])
 
-if TRAIN:
-    # start training
-    trainer.train()
-else:
-    # start evaluation
-    # agent.load("/home/toni/Documents/RL/skrl-org/runs/torch/Pendulum/25-06-17_17-00-34-236778_DDPG/checkpoints/agent_15000.pt")
-    # agent.load("/home/toni/Documents/RL/skrl-org/runs/warp/Pendulum/25-06-17_17-04-29-378954_DDPG/checkpoints/agent_15000.pt")
-    trainer.eval()
+# start training
+trainer.train()
