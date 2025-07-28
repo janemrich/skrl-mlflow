@@ -2,11 +2,12 @@ from typing import Any, Tuple, Union
 
 import gymnasium
 
-import torch
+import numpy as np
+import warp as wp
 
 from skrl import logger
-from skrl.envs.wrappers.torch.base import Wrapper
-from skrl.utils.spaces.torch import (
+from skrl.envs.wrappers.warp.base import Wrapper
+from skrl.utils.spaces.warp import (
     flatten_tensorized_space,
     tensorize_space,
     unflatten_tensorized_space,
@@ -51,14 +52,20 @@ class GymnasiumWrapper(Wrapper):
             return self._env.single_action_space
         return self._env.action_space
 
-    def step(self, actions: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Any]:
+    def step(self, actions: wp.array) -> Tuple[
+        wp.array,
+        wp.array,
+        wp.array,
+        wp.array,
+        Any,
+    ]:
         """Perform a step in the environment
 
         :param actions: The actions to perform
-        :type actions: torch.Tensor
+        :type actions: wp.array
 
         :return: Observation, reward, terminated, truncated, info
-        :rtype: tuple of torch.Tensor and any other info
+        :rtype: tuple of wp.array and any other info
         """
         actions = untensorize_space(
             self.action_space,
@@ -68,11 +75,11 @@ class GymnasiumWrapper(Wrapper):
 
         observation, reward, terminated, truncated, info = self._env.step(actions)
 
-        # convert response to torch
+        # convert response to warp
         observation = flatten_tensorized_space(tensorize_space(self.observation_space, observation, device=self.device))
-        reward = torch.tensor(reward, device=self.device, dtype=torch.float32).view(self.num_envs, -1)
-        terminated = torch.tensor(terminated, device=self.device, dtype=torch.bool).view(self.num_envs, -1)
-        truncated = torch.tensor(truncated, device=self.device, dtype=torch.bool).view(self.num_envs, -1)
+        reward = wp.array(np.array(reward), dtype=wp.float32).reshape((self.num_envs, -1))
+        terminated = wp.array(np.array(terminated), dtype=wp.int8).reshape((self.num_envs, -1))
+        truncated = wp.array(np.array(truncated), dtype=wp.int8).reshape((self.num_envs, -1))
 
         # save observation and info for vectorized envs
         if self._vectorized:
@@ -81,11 +88,11 @@ class GymnasiumWrapper(Wrapper):
 
         return observation, reward, terminated, truncated, info
 
-    def state(self) -> Union[torch.Tensor, None]:
+    def state(self) -> Union[wp.array, None]:
         """Get the environment state
 
         :return: State
-        :rtype: torch.Tensor
+        :rtype: wp.array
         """
         try:
             return flatten_tensorized_space(
@@ -99,11 +106,11 @@ class GymnasiumWrapper(Wrapper):
         #     )
         # return None
 
-    def reset(self) -> Tuple[torch.Tensor, Any]:
+    def reset(self) -> Tuple[wp.array, Any]:
         """Reset the environment
 
         :return: Observation, info
-        :rtype: torch.Tensor and any other info
+        :rtype: wp.array and any other info
         """
         # handle vectorized environments (vector environments are autoreset)
         if self._vectorized:
