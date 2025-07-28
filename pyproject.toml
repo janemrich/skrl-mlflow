@@ -106,3 +106,18 @@ sections = [
 ]
 no_lines_before = "THIRDPARTY"
 skip = ["docs"]
+
+
+[tool.pyright]
+typeCheckingMode = "standard"
+pythonPlatform = "Linux"
+pythonVersion = "3.8"
+include = ["skrl"]
+exclude = [
+  "**/__pycache__",
+  "**/tests",
+]
+
+reportAttributeAccessIssue = "none"
+reportMissingImports = "none"
+reportUndefinedVariable = "none"
