@@ -35,7 +35,7 @@ class Policy(GaussianMixin, Model):
         state_space,
         action_space,
         device,
-        clip_actions=False,
+        clip_actions=True,
         clip_log_std=True,
         min_log_std=-20,
         max_log_std=2,

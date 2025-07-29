@@ -197,7 +197,10 @@ def _loss(
     entropy_loss: wp.array1d(dtype=float),
     loss: wp.array(dtype=float),
 ):
-    wp.atomic_add(loss, 0, policy_loss[0] + value_loss[0] + entropy_loss[0])
+    if entropy_loss:
+        wp.atomic_add(loss, 0, policy_loss[0] + value_loss[0] + entropy_loss[0])
+    else:
+        wp.atomic_add(loss, 0, policy_loss[0] + value_loss[0])
 
 
 class PPO(Agent):
@@ -606,7 +609,8 @@ class PPO(Agent):
                     wp.launch(
                         _loss,
                         dim=1,
-                        inputs=[self._policy_loss, self._value_loss, self._entropy_loss, self._loss],
+                        inputs=[self._policy_loss, self._value_loss, self._entropy_loss],
+                        outputs=[self._loss],
                         device=self.device,
                     )
 
