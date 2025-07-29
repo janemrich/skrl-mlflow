@@ -11,11 +11,10 @@ wp.config.verbose_warnings = True
 import skrl.models.warp.nn as nn
 
 # import the skrl components to build the RL system
-from skrl.agents.warp.ddpg import DDPG, DDPG_DEFAULT_CONFIG
+from skrl.agents.warp.sac import SAC, SAC_DEFAULT_CONFIG
 from skrl.envs.wrappers.warp import wrap_env
 from skrl.memories.warp import RandomMemory
-from skrl.models.warp import DeterministicMixin, Model
-from skrl.resources.noises.warp import OrnsteinUhlenbeckNoise
+from skrl.models.warp import DeterministicMixin, GaussianMixin, Model
 from skrl.trainers.warp import SequentialTrainer
 from skrl.utils import set_seed
 from skrl.utils.framework.warp import concatenate, scalar_mul
@@ -25,13 +24,31 @@ from skrl.utils.framework.warp import concatenate, scalar_mul
 set_seed()  # e.g. `set_seed(42)` for fixed seed
 
 
-# define models (deterministic models) using mixin
-class Actor(DeterministicMixin, Model):
-    def __init__(self, observation_space, state_space, action_space, device, clip_actions=False):
+# define models (stochastic and deterministic models) using mixins
+class Actor(GaussianMixin, Model):
+    def __init__(
+        self,
+        observation_space,
+        state_space,
+        action_space,
+        device,
+        clip_actions=False,
+        clip_log_std=True,
+        min_log_std=-20,
+        max_log_std=2,
+        reduction="sum",
+    ):
         Model.__init__(
             self, observation_space=observation_space, state_space=state_space, action_space=action_space, device=device
         )
-        DeterministicMixin.__init__(self, clip_actions=clip_actions)
+        GaussianMixin.__init__(
+            self,
+            clip_actions=clip_actions,
+            clip_log_std=clip_log_std,
+            min_log_std=min_log_std,
+            max_log_std=max_log_std,
+            reduction=reduction,
+        )
 
         self.net = nn.Sequential(
             nn.Linear(self.num_observations, 32),
@@ -41,12 +58,13 @@ class Actor(DeterministicMixin, Model):
             nn.Linear(32, self.num_actions),
             nn.Tanh(),
         )
+        self.log_std_parameter = nn.Parameter(wp.zeros(self.num_actions))
         self.__post_init__()
 
     def compute(self, inputs, role):
         # Pendulum-v1 action_space is -2 to 2
         x = self.net(inputs["observations"])
-        return scalar_mul(x, 2.0), {}
+        return scalar_mul(x, 2.0), {"log_std": self.log_std_parameter.data}
 
 
 class Critic(DeterministicMixin, Model):
@@ -88,13 +106,14 @@ memory = RandomMemory(memory_size=15000, num_envs=env.num_envs, device=device, r
 
 
 # instantiate the agent's models (function approximators).
-# DDPG requires 4 models, visit its documentation for more details
-# https://skrl.readthedocs.io/en/latest/api/agents/ddpg.html#models
+# SAC requires 5 models, visit its documentation for more details
+# https://skrl.readthedocs.io/en/latest/api/agents/sac.html#models
 models = {}
 models["policy"] = Actor(env.observation_space, env.state_space, env.action_space, device)
-models["target_policy"] = Actor(env.observation_space, env.state_space, env.action_space, device)
-models["critic"] = Critic(env.observation_space, env.state_space, env.action_space, device)
-models["target_critic"] = Critic(env.observation_space, env.state_space, env.action_space, device)
+models["critic_1"] = Critic(env.observation_space, env.state_space, env.action_space, device)
+models["critic_2"] = Critic(env.observation_space, env.state_space, env.action_space, device)
+models["target_critic_1"] = Critic(env.observation_space, env.state_space, env.action_space, device)
+models["target_critic_2"] = Critic(env.observation_space, env.state_space, env.action_space, device)
 
 # # initialize models' parameters (weights and biases)
 # for model in models.values():
@@ -102,18 +121,18 @@ models["target_critic"] = Critic(env.observation_space, env.state_space, env.act
 
 
 # configure and instantiate the agent (visit its documentation to see all the options)
-# https://skrl.readthedocs.io/en/latest/api/agents/ddpg.html#configuration-and-hyperparameters
-cfg = DDPG_DEFAULT_CONFIG.copy()
-cfg["exploration"]["noise"] = OrnsteinUhlenbeckNoise(theta=0.15, sigma=0.1, base_scale=1.0, device=device)
+# https://skrl.readthedocs.io/en/latest/api/agents/sac.html#configuration-and-hyperparameters
+cfg = SAC_DEFAULT_CONFIG.copy()
 cfg["batch_size"] = 100
 cfg["random_timesteps"] = 100
 cfg["learning_starts"] = 100
+cfg["learn_entropy"] = True
 # logging to TensorBoard and write checkpoints (in timesteps)
 cfg["experiment"]["write_interval"] = "auto"
 cfg["experiment"]["checkpoint_interval"] = "auto"
 cfg["experiment"]["directory"] = "runs/warp/Pendulum"
 
-agent = DDPG(
+agent = SAC(
     models=models,
     memory=memory,
     cfg=cfg,
