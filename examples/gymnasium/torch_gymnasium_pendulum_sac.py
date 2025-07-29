@@ -2,7 +2,6 @@ import gymnasium as gym
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 # import the skrl components to build the RL system
 from skrl.agents.torch.sac import SAC, SAC_DEFAULT_CONFIG
@@ -22,6 +21,7 @@ class Actor(GaussianMixin, Model):
     def __init__(
         self,
         observation_space,
+        state_space,
         action_space,
         device,
         clip_actions=False,
@@ -30,35 +30,52 @@ class Actor(GaussianMixin, Model):
         max_log_std=2,
         reduction="sum",
     ):
-        Model.__init__(self, observation_space, action_space, device)
-        GaussianMixin.__init__(self, clip_actions, clip_log_std, min_log_std, max_log_std, reduction)
+        Model.__init__(
+            self, observation_space=observation_space, state_space=state_space, action_space=action_space, device=device
+        )
+        GaussianMixin.__init__(
+            self,
+            clip_actions=clip_actions,
+            clip_log_std=clip_log_std,
+            min_log_std=min_log_std,
+            max_log_std=max_log_std,
+            reduction=reduction,
+        )
 
-        self.linear_layer_1 = nn.Linear(self.num_observations, 400)
-        self.linear_layer_2 = nn.Linear(400, 300)
-        self.action_layer = nn.Linear(300, self.num_actions)
-
+        self.net = nn.Sequential(
+            nn.Linear(self.num_observations, 32),
+            nn.ReLU(),
+            nn.Linear(32, 32),
+            nn.ReLU(),
+            nn.Linear(32, self.num_actions),
+            nn.Tanh(),
+        )
         self.log_std_parameter = nn.Parameter(torch.zeros(self.num_actions))
 
     def compute(self, inputs, role):
-        x = F.relu(self.linear_layer_1(inputs["states"]))
-        x = F.relu(self.linear_layer_2(x))
         # Pendulum-v1 action_space is -2 to 2
-        return 2 * torch.tanh(self.action_layer(x)), self.log_std_parameter, {}
+        x = self.net(inputs["observations"])
+        return 2 * x, {"log_std": self.log_std_parameter}
 
 
 class Critic(DeterministicMixin, Model):
-    def __init__(self, observation_space, action_space, device, clip_actions=False):
-        Model.__init__(self, observation_space, action_space, device)
-        DeterministicMixin.__init__(self, clip_actions)
+    def __init__(self, observation_space, state_space, action_space, device):
+        Model.__init__(
+            self, observation_space=observation_space, state_space=state_space, action_space=action_space, device=device
+        )
+        DeterministicMixin.__init__(self)
 
-        self.linear_layer_1 = nn.Linear(self.num_observations + self.num_actions, 400)
-        self.linear_layer_2 = nn.Linear(400, 300)
-        self.linear_layer_3 = nn.Linear(300, 1)
+        self.net = nn.Sequential(
+            nn.Linear(self.num_observations + self.num_actions, 32),
+            nn.ReLU(),
+            nn.Linear(32, 32),
+            nn.ReLU(),
+            nn.Linear(32, 1),
+        )
 
     def compute(self, inputs, role):
-        x = F.relu(self.linear_layer_1(torch.cat([inputs["states"], inputs["taken_actions"]], dim=1)))
-        x = F.relu(self.linear_layer_2(x))
-        return self.linear_layer_3(x), {}
+        x = self.net(torch.cat([inputs["observations"], inputs["taken_actions"]], dim=1))
+        return x, {}
 
 
 # load and wrap the gymnasium environment.
@@ -75,18 +92,18 @@ device = env.device
 
 
 # instantiate a memory as experience replay
-memory = RandomMemory(memory_size=20000, num_envs=env.num_envs, device=device, replacement=False)
+memory = RandomMemory(memory_size=15000, num_envs=env.num_envs, device=device, replacement=False)
 
 
 # instantiate the agent's models (function approximators).
 # SAC requires 5 models, visit its documentation for more details
 # https://skrl.readthedocs.io/en/latest/api/agents/sac.html#models
 models = {}
-models["policy"] = Actor(env.observation_space, env.action_space, device, clip_actions=True)
-models["critic_1"] = Critic(env.observation_space, env.action_space, device)
-models["critic_2"] = Critic(env.observation_space, env.action_space, device)
-models["target_critic_1"] = Critic(env.observation_space, env.action_space, device)
-models["target_critic_2"] = Critic(env.observation_space, env.action_space, device)
+models["policy"] = Actor(env.observation_space, env.state_space, env.action_space, device)
+models["critic_1"] = Critic(env.observation_space, env.state_space, env.action_space, device)
+models["critic_2"] = Critic(env.observation_space, env.state_space, env.action_space, device)
+models["target_critic_1"] = Critic(env.observation_space, env.state_space, env.action_space, device)
+models["target_critic_2"] = Critic(env.observation_space, env.state_space, env.action_space, device)
 
 # initialize models' parameters (weights and biases)
 for model in models.values():
@@ -96,14 +113,13 @@ for model in models.values():
 # configure and instantiate the agent (visit its documentation to see all the options)
 # https://skrl.readthedocs.io/en/latest/api/agents/sac.html#configuration-and-hyperparameters
 cfg = SAC_DEFAULT_CONFIG.copy()
-cfg["discount_factor"] = 0.98
 cfg["batch_size"] = 100
-cfg["random_timesteps"] = 0
-cfg["learning_starts"] = 1000
+cfg["random_timesteps"] = 100
+cfg["learning_starts"] = 100
 cfg["learn_entropy"] = True
 # logging to TensorBoard and write checkpoints (in timesteps)
-cfg["experiment"]["write_interval"] = 75
-cfg["experiment"]["checkpoint_interval"] = 750
+cfg["experiment"]["write_interval"] = "auto"
+cfg["experiment"]["checkpoint_interval"] = "auto"
 cfg["experiment"]["directory"] = "runs/torch/Pendulum"
 
 agent = SAC(
@@ -111,6 +127,7 @@ agent = SAC(
     memory=memory,
     cfg=cfg,
     observation_space=env.observation_space,
+    state_space=env.state_space,
     action_space=env.action_space,
     device=device,
 )
