@@ -4,11 +4,11 @@ import gymnasium
 
 import numpy as np
 import warp as wp
-import warp.optim as optim
 
 from skrl.agents.warp import Agent
 from skrl.memories.warp import Memory
 from skrl.models.warp import Model
+from skrl.resources.optimizers.warp import Adam
 
 
 # fmt: off
@@ -230,19 +230,14 @@ class SAC(Agent):
             self.log_entropy_coefficient = wp.array(
                 np.log([self._entropy_coefficient]), dtype=wp.float32, device=self.device, requires_grad=True
             )
-            self.entropy_optimizer = optim.Adam(params=[self.log_entropy_coefficient], lr=self._entropy_learning_rate)
+            self.entropy_optimizer = Adam([self.log_entropy_coefficient], lr=self._entropy_learning_rate)
             # self.checkpoint_modules["entropy_optimizer"] = self.entropy_optimizer
 
         # set up optimizers and learning rate schedulers
         if self.policy is not None and self.critic_1 is not None and self.critic_2 is not None:
-            self.policy_optimizer = optim.Adam(
-                params=[param.flatten() for param in self.policy.parameters()], lr=self._actor_learning_rate
-            )
-            self.critic_optimizer = optim.Adam(
-                params=(
-                    [param.flatten() for param in self.critic_1.parameters()]
-                    + [param.flatten() for param in self.critic_2.parameters()]
-                ),
+            self.policy_optimizer = Adam(self.policy.parameters(), lr=self._actor_learning_rate)
+            self.critic_optimizer = Adam(
+                self.critic_1.parameters() + self.critic_2.parameters(),
                 lr=self._critic_learning_rate,
             )
             if self._learning_rate_scheduler is not None:

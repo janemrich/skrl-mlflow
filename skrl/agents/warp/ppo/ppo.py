@@ -4,11 +4,11 @@ import gymnasium
 
 import numpy as np
 import warp as wp
-import warp.optim as optim
 
 from skrl.agents.warp import Agent
 from skrl.memories.warp import Memory
 from skrl.models.warp import Model
+from skrl.resources.optimizers.warp import Adam
 
 
 # fmt: off
@@ -250,15 +250,10 @@ class PPO(Agent):
         # set up optimizer and learning rate scheduler
         if self.policy is not None and self.value is not None:
             if self.policy is self.value:
-                self.optimizer = optim.Adam(
-                    params=[param.flatten() for param in self.policy.parameters()], lr=self._learning_rate
-                )
+                self.optimizer = Adam(self.policy.parameters(), lr=self._learning_rate)
             else:
-                self.optimizer = optim.Adam(
-                    params=(
-                        [param.flatten() for param in self.policy.parameters()]
-                        + [param.flatten() for param in self.value.parameters()]
-                    ),
+                self.optimizer = Adam(
+                    self.policy.parameters() + self.value.parameters(),
                     lr=self._learning_rate,
                 )
             if self._learning_rate_scheduler is not None:
