@@ -87,9 +87,41 @@ def _time_limit_bootstrap(
     rewards[i, 0] = rewards[i, 0] + discount_factor * values[i, 0] * wp.float32(truncated[i, 0])
 
 
-@wp.kernel
-def _compute_gae():
-    pass
+@wp.kernel(enable_backward=False)
+def _compute_gae(
+    rewards: wp.array3d(dtype=float),
+    terminated: wp.array3d(dtype=wp.int8),
+    truncated: wp.array3d(dtype=wp.int8),
+    values: wp.array3d(dtype=float),
+    returns: wp.array3d(dtype=float),
+    advantages: wp.array3d(dtype=float),
+    last_values: wp.array2d(dtype=float),
+    advantage: wp.array2d(dtype=float),
+    discount_factor: float,
+    lambda_coefficient: float,
+    memory_size: int,
+):
+    j = wp.tid()  # number of environments
+    for i in reversed(range(memory_size)):
+        if i < memory_size - 1:
+            advantage[j, 0] = (
+                rewards[i, j, 0]
+                - values[i, j, 0]
+                + discount_factor
+                * wp.float(wp.unot(wp.add(terminated[i, j, 0], truncated[i, j, 0])))
+                * (values[i + 1, j, 0] + lambda_coefficient * advantage[j, 0])
+            )
+        else:
+            advantage[j, 0] = (
+                rewards[i, j, 0]
+                - values[i, j, 0]
+                + discount_factor
+                * wp.float(wp.unot(wp.add(terminated[i, j, 0], truncated[i, j, 0])))
+                * (last_values[j, 0] + lambda_coefficient * advantage[j, 0])
+            )
+        advantages[i, j, 0] = advantage[j, 0]
+        returns[i, j, 0] = advantages[i, j, 0] + values[i, j, 0]
+    # TODO: normalize advantages
 
 
 @wp.kernel
@@ -467,23 +499,36 @@ class PPO(Agent):
             "observations": self._observation_preprocessor(self._current_next_observations),
             "states": self._state_preprocessor(self._current_next_states),
         }
+        enable_grad(inputs, enabled=False)
         self.value.enable_training_mode(False)
         last_values, _ = self.value.act(inputs, role="value")
         self.value.enable_training_mode(True)
         last_values = self._value_preprocessor(last_values, inverse=True)
 
-        values = self.memory.get_tensor_by_name("values")  # (1024, 4, 1)
-        returns = wp.zeros(shape=values.shape, dtype=wp.float32, device=self.device)
-        advantages = wp.zeros(shape=values.shape, dtype=wp.float32, device=self.device)
+        # TODO: replace 'full' with 'empty'
+        values = self.memory.get_tensor_by_name("values")
+        returns = wp.full(shape=values.shape, value=wp.nan, dtype=wp.float32, device=self.device)
+        advantages = wp.full(shape=values.shape, value=wp.nan, dtype=wp.float32, device=self.device)
+        advantage = wp.zeros(shape=values.shape[1:], dtype=wp.float32, device=self.device)
 
-        # # returns, advantages = compute_gae(
-        # #     rewards=self.memory.get_tensor_by_name("rewards"),
-        # #     dones=self.memory.get_tensor_by_name("terminated") | self.memory.get_tensor_by_name("truncated"),
-        # #     values=values,
-        # #     next_values=last_values,
-        # #     discount_factor=self._discount_factor,
-        # #     lambda_coefficient=self._lambda,
-        # # )
+        wp.launch(
+            _compute_gae,
+            dim=values.shape[1],
+            inputs=[
+                self.memory.get_tensor_by_name("rewards"),
+                self.memory.get_tensor_by_name("terminated"),
+                self.memory.get_tensor_by_name("truncated"),
+                values,
+                returns,
+                advantages,
+                last_values,
+                advantage,
+                self._discount_factor,
+                self._lambda,
+                values.shape[0],
+            ],
+            device=self.device,
+        )
 
         self.memory.set_tensor_by_name("values", self._value_preprocessor(values, train=True))
         self.memory.set_tensor_by_name("returns", self._value_preprocessor(returns, train=True))
