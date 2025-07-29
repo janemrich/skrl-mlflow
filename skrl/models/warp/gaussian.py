@@ -1,11 +1,11 @@
 from typing import Any, Literal, Mapping, Tuple, Union
 
 import math
-import gymnasium
 
 import warp as wp
 
 from skrl import config
+from skrl.utils.spaces.warp import compute_space_limits
 
 
 HALF_LOG_2_PI = wp.constant(0.5 * math.log(2 * math.pi))
@@ -107,14 +107,10 @@ class GaussianMixin:
 
         :raises ValueError: If the reduction method is not valid.
         """
-        self._g_clip_actions = clip_actions and isinstance(self.action_space, gymnasium.Space)
-
-        if self._g_clip_actions:
-            self._g_clip_actions_min = wp.array(self.action_space.low, device=self.device, dtype=wp.float32)
-            self._g_clip_actions_max = wp.array(self.action_space.high, device=self.device, dtype=wp.float32)
-        else:
-            self._g_clip_actions_min = None
-            self._g_clip_actions_max = None
+        self._g_clip_actions = clip_actions
+        self._g_clip_actions_min, self._g_clip_actions_max = compute_space_limits(
+            self.action_space if self._g_clip_actions else None, device=self.device, none_if_unbounded="both"
+        )
 
         self._g_clip_log_std = clip_log_std
         self._g_log_std_min = min_log_std if self._g_clip_log_std else -wp.inf
