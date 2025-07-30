@@ -8,7 +8,7 @@ from skrl import config
 from skrl.utils.spaces.warp import compute_space_limits
 
 
-HALF_LOG_2_PI = wp.constant(0.5 * math.log(2 * math.pi))
+LOG_SQRT_2_PI = wp.constant(math.log(math.sqrt(2 * math.pi)))
 HALF_LOG_2_PI_PLUS = wp.constant(0.5 + 0.5 * math.log(2 * math.pi))
 
 
@@ -18,7 +18,7 @@ def _log_prob(
     loc: float,
     scale: float,
 ):
-    return -wp.pow(action - loc, 2.0) / (2.0 * wp.pow(scale, 2.0)) - wp.log(scale) - HALF_LOG_2_PI
+    return -(wp.pow(action - loc, 2.0) / (2.0 * wp.pow(scale, 2.0)) - wp.log(scale) - LOG_SQRT_2_PI)
 
 
 @wp.kernel
@@ -61,7 +61,7 @@ def _gaussian(
             pass  # TODO: implement prod
         # none
         else:
-            log_prob[i, j] = _log_prob(actions[i, j], loc[i, j], scale[j])
+            log_prob[i, j] = _log_prob(taken_actions[i, j], loc[i, j], scale[j])
     else:
         # mean
         if reduction == 0:
