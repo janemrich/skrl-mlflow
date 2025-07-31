@@ -5,10 +5,11 @@ import gymnasium
 import numpy as np
 import warp as wp
 
+import skrl.utils.framework.warp as warp_utils
 from skrl.agents.warp import Agent
 from skrl.memories.warp import Memory
 from skrl.models.warp import Model
-from skrl.resources.optimizers.warp import Adam
+from skrl.resources.optimizers.warp import Adam, clip_by_total_norm
 
 
 # fmt: off
@@ -121,7 +122,16 @@ def _compute_gae(
             )
         advantages[i, j, 0] = advantage[j, 0]
         returns[i, j, 0] = advantages[i, j, 0] + values[i, j, 0]
-    # TODO: normalize advantages
+
+
+@wp.kernel(enable_backward=False)
+def _normalize_advantages(
+    advantages: wp.array3d(dtype=float),
+    advantages_mean: wp.array1d(dtype=float),
+    advantages_var: wp.array1d(dtype=float),
+):
+    i, j = wp.tid()
+    advantages[i, j, 0] = (advantages[i, j, 0] - advantages_mean[0]) / (wp.sqrt(advantages_var[0]) + 1e-8)
 
 
 @wp.kernel
@@ -198,9 +208,9 @@ def _loss(
     loss: wp.array(dtype=float),
 ):
     if entropy_loss:
-        wp.atomic_add(loss, 0, policy_loss[0] + value_loss[0] + entropy_loss[0])
+        loss[0] = policy_loss[0] + value_loss[0] + entropy_loss[0]
     else:
-        wp.atomic_add(loss, 0, policy_loss[0] + value_loss[0])
+        loss[0] = policy_loss[0] + value_loss[0]
 
 
 class PPO(Agent):
@@ -532,6 +542,12 @@ class PPO(Agent):
             ],
             device=self.device,
         )
+        wp.launch(
+            _normalize_advantages,
+            dim=advantages.shape[:2],
+            inputs=[advantages, warp_utils.mean(advantages), warp_utils.var(advantages, correction=1)],
+            device=self.device,
+        )
 
         self.memory.set_tensor_by_name("values", self._value_preprocessor(values, train=True))
         self.memory.set_tensor_by_name("returns", self._value_preprocessor(returns, train=True))
@@ -622,6 +638,8 @@ class PPO(Agent):
 
                 # optimization step
                 tape.backward(self._loss)
+                if self._grad_norm_clip > 0:
+                    clip_by_total_norm(self._optimizer_grads, self._grad_norm_clip)
                 self.optimizer.step(self._optimizer_grads)
                 tape.zero()
 
