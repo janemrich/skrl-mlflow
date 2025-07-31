@@ -17,7 +17,7 @@ from skrl.memories.warp import RandomMemory
 from skrl.models.warp import DeterministicMixin, GaussianMixin, Model
 
 # from skrl.resources.preprocessors.warp import RunningStandardScaler
-# from skrl.resources.schedulers.warp import KLAdaptiveLR
+from skrl.resources.schedulers.warp import KLAdaptiveLR
 from skrl.trainers.warp import SequentialTrainer
 from skrl.utils import set_seed
 from skrl.utils.framework.warp import scalar_mul
@@ -35,7 +35,7 @@ class Policy(GaussianMixin, Model):
         state_space,
         action_space,
         device,
-        clip_actions=True,
+        clip_actions=False,
         clip_log_std=True,
         min_log_std=-20,
         max_log_std=2,
@@ -124,8 +124,8 @@ cfg["mini_batches"] = 32
 cfg["discount_factor"] = 0.9
 cfg["lambda"] = 0.95
 cfg["learning_rate"] = 1e-3
-# cfg["learning_rate_scheduler"] = KLAdaptiveLR
-# cfg["learning_rate_scheduler_kwargs"] = {"kl_threshold": 0.008}
+cfg["learning_rate_scheduler"] = KLAdaptiveLR
+cfg["learning_rate_scheduler_kwargs"] = {"kl_threshold": 0.008}
 cfg["grad_norm_clip"] = 0.5
 cfg["ratio_clip"] = 0.2
 cfg["value_clip"] = 0.2

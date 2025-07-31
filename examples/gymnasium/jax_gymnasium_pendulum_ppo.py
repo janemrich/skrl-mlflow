@@ -4,6 +4,11 @@ import flax.linen as nn
 import jax
 import jax.numpy as jnp
 
+
+jax.config.update("jax_compilation_cache_dir", "/tmp/jax_cache")
+jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
+jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
+
 # import the skrl components to build the RL system
 from skrl import config
 from skrl.agents.jax.ppo import PPO, PPO_DEFAULT_CONFIG
@@ -11,12 +16,12 @@ from skrl.envs.wrappers.jax import wrap_env
 from skrl.memories.jax import RandomMemory
 from skrl.models.jax import DeterministicMixin, GaussianMixin, Model
 from skrl.resources.preprocessors.jax import RunningStandardScaler
-from skrl.resources.schedulers.jax import KLAdaptiveRL
+from skrl.resources.schedulers.jax import KLAdaptiveLR
 from skrl.trainers.jax import SequentialTrainer
 from skrl.utils import set_seed
 
 
-config.jax.backend = "numpy"  # or "jax"
+config.jax.backend = "jax"  # or "jax"
 
 
 # seed for reproducibility
@@ -28,8 +33,9 @@ class Policy(GaussianMixin, Model):
     def __init__(
         self,
         observation_space,
+        state_space,
         action_space,
-        device=None,
+        device,
         clip_actions=False,
         clip_log_std=True,
         min_log_std=-20,
@@ -37,28 +43,49 @@ class Policy(GaussianMixin, Model):
         reduction="sum",
         **kwargs,
     ):
-        Model.__init__(self, observation_space, action_space, device, **kwargs)
-        GaussianMixin.__init__(self, clip_actions, clip_log_std, min_log_std, max_log_std, reduction)
+        Model.__init__(
+            self,
+            observation_space=observation_space,
+            state_space=state_space,
+            action_space=action_space,
+            device=device,
+            **kwargs,
+        )
+        GaussianMixin.__init__(
+            self,
+            clip_actions=clip_actions,
+            clip_log_std=clip_log_std,
+            min_log_std=min_log_std,
+            max_log_std=max_log_std,
+            reduction=reduction,
+        )
 
     @nn.compact  # marks the given module method allowing inlined submodules
     def __call__(self, inputs, role):
-        x = nn.relu(nn.Dense(64)(inputs["states"]))
-        x = nn.relu(nn.Dense(64)(x))
+        x = nn.relu(nn.Dense(32)(inputs["observations"]))
+        x = nn.relu(nn.Dense(32)(x))
         x = nn.Dense(self.num_actions)(x)
         log_std = self.param("log_std", lambda _: jnp.zeros(self.num_actions))
         # Pendulum-v1 action_space is -2 to 2
-        return 2 * nn.tanh(x), log_std, {}
+        return 2 * nn.tanh(x), {"log_std": log_std}
 
 
 class Value(DeterministicMixin, Model):
-    def __init__(self, observation_space, action_space, device=None, clip_actions=False, **kwargs):
-        Model.__init__(self, observation_space, action_space, device, **kwargs)
-        DeterministicMixin.__init__(self, clip_actions)
+    def __init__(self, observation_space, state_space, action_space, device, **kwargs):
+        Model.__init__(
+            self,
+            observation_space=observation_space,
+            state_space=state_space,
+            action_space=action_space,
+            device=device,
+            **kwargs,
+        )
+        DeterministicMixin.__init__(self)
 
     @nn.compact  # marks the given module method allowing inlined submodules
     def __call__(self, inputs, role):
-        x = nn.relu(nn.Dense(64)(inputs["states"]))
-        x = nn.relu(nn.Dense(64)(x))
+        x = nn.relu(nn.Dense(32)(inputs["observations"]))
+        x = nn.relu(nn.Dense(32)(x))
         x = nn.Dense(1)(x)
         return x, {}
 
@@ -84,12 +111,12 @@ memory = RandomMemory(memory_size=1024, num_envs=env.num_envs, device=device)
 # PPO requires 2 models, visit its documentation for more details
 # https://skrl.readthedocs.io/en/latest/api/agents/ppo.html#models
 models = {}
-models["policy"] = Policy(env.observation_space, env.action_space, device, clip_actions=True)
-models["value"] = Value(env.observation_space, env.action_space, device)
+models["policy"] = Policy(env.observation_space, env.state_space, env.action_space, device)
+models["value"] = Value(env.observation_space, env.state_space, env.action_space, device)
 
 # instantiate models' state dict
 for role, model in models.items():
-    model.init_state_dict(role)
+    model.init_state_dict(role=role)
 
 
 # configure and instantiate the agent (visit its documentation to see all the options)
@@ -101,7 +128,7 @@ cfg["mini_batches"] = 32
 cfg["discount_factor"] = 0.9
 cfg["lambda"] = 0.95
 cfg["learning_rate"] = 1e-3
-cfg["learning_rate_scheduler"] = KLAdaptiveRL
+cfg["learning_rate_scheduler"] = KLAdaptiveLR
 cfg["learning_rate_scheduler_kwargs"] = {"kl_threshold": 0.008}
 cfg["grad_norm_clip"] = 0.5
 cfg["ratio_clip"] = 0.2
@@ -110,13 +137,13 @@ cfg["clip_predicted_values"] = False
 cfg["entropy_loss_scale"] = 0.0
 cfg["value_loss_scale"] = 0.5
 cfg["kl_threshold"] = 0
-cfg["state_preprocessor"] = RunningStandardScaler
-cfg["state_preprocessor_kwargs"] = {"size": env.observation_space, "device": device}
-cfg["value_preprocessor"] = RunningStandardScaler
-cfg["value_preprocessor_kwargs"] = {"size": 1, "device": device}
+# cfg["state_preprocessor"] = RunningStandardScaler
+# cfg["state_preprocessor_kwargs"] = {"size": env.observation_space, "device": device}
+# cfg["value_preprocessor"] = RunningStandardScaler
+# cfg["value_preprocessor_kwargs"] = {"size": 1, "device": device}
 # logging to TensorBoard and write checkpoints (in timesteps)
-cfg["experiment"]["write_interval"] = 500
-cfg["experiment"]["checkpoint_interval"] = 5000
+cfg["experiment"]["write_interval"] = "auto"
+cfg["experiment"]["checkpoint_interval"] = "auto"
 cfg["experiment"]["directory"] = "runs/jax/Pendulum"
 
 agent = PPO(
@@ -124,6 +151,7 @@ agent = PPO(
     memory=memory,
     cfg=cfg,
     observation_space=env.observation_space,
+    state_space=env.state_space,
     action_space=env.action_space,
     device=device,
 )
