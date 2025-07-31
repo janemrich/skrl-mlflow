@@ -98,30 +98,30 @@ def _compute_gae(
     returns: wp.array3d(dtype=float),
     advantages: wp.array3d(dtype=float),
     last_values: wp.array2d(dtype=float),
-    advantage: wp.array2d(dtype=float),
     discount_factor: float,
     lambda_coefficient: float,
     memory_size: int,
 ):
     j = wp.tid()  # number of environments
+    advantage = float(0.0)
     for i in reversed(range(memory_size)):
         if i < memory_size - 1:
-            advantage[j, 0] = (
+            advantage = (
                 rewards[i, j, 0]
                 - values[i, j, 0]
                 + discount_factor
                 * wp.float(wp.unot(wp.add(terminated[i, j, 0], truncated[i, j, 0])))
-                * (values[i + 1, j, 0] + lambda_coefficient * advantage[j, 0])
+                * (values[i + 1, j, 0] + lambda_coefficient * advantage)
             )
         else:
-            advantage[j, 0] = (
+            advantage = (
                 rewards[i, j, 0]
                 - values[i, j, 0]
                 + discount_factor
                 * wp.float(wp.unot(wp.add(terminated[i, j, 0], truncated[i, j, 0])))
-                * (last_values[j, 0] + lambda_coefficient * advantage[j, 0])
+                * (last_values[j, 0] + lambda_coefficient * advantage)
             )
-        advantages[i, j, 0] = advantage[j, 0]
+        advantages[i, j, 0] = advantage
         returns[i, j, 0] = advantages[i, j, 0] + values[i, j, 0]
 
 
@@ -520,7 +520,6 @@ class PPO(Agent):
         values = self.memory.get_tensor_by_name("values")
         returns = wp.empty(shape=values.shape, dtype=wp.float32, device=self.device)
         advantages = wp.empty(shape=values.shape, dtype=wp.float32, device=self.device)
-        advantage = wp.zeros(shape=values.shape[1:], dtype=wp.float32, device=self.device)
 
         wp.launch(
             _compute_gae,
@@ -533,7 +532,6 @@ class PPO(Agent):
                 returns,
                 advantages,
                 last_values,
-                advantage,
                 self._discount_factor,
                 self._lambda,
                 values.shape[0],
