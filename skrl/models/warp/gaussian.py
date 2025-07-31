@@ -151,9 +151,9 @@ class GaussianMixin:
         shape = mean_actions.shape
         actions = wp.empty(shape=shape, dtype=wp.float32, device=self.device, requires_grad=True)
         if self._g_reduction == "none":
-            log_prob = wp.empty(shape=shape, dtype=wp.float32, device=self.device, requires_grad=True)
+            log_prob = wp.zeros(shape=shape, dtype=wp.float32, device=self.device, requires_grad=True)
         else:
-            log_prob = wp.empty(shape=(shape[0], 1), dtype=wp.float32, device=self.device, requires_grad=True)
+            log_prob = wp.zeros(shape=(shape[0], 1), dtype=wp.float32, device=self.device, requires_grad=True)
         scale = wp.empty(shape=log_std.shape, dtype=wp.float32, device=self.device, requires_grad=True)
 
         wp.launch(
