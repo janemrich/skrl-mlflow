@@ -15,8 +15,7 @@ from skrl.agents.warp.ppo import PPO, PPO_DEFAULT_CONFIG
 from skrl.envs.wrappers.warp import wrap_env
 from skrl.memories.warp import RandomMemory
 from skrl.models.warp import DeterministicMixin, GaussianMixin, Model
-
-# from skrl.resources.preprocessors.warp import RunningStandardScaler
+from skrl.resources.preprocessors.warp import RunningStandardScaler
 from skrl.resources.schedulers.warp import KLAdaptiveLR
 from skrl.trainers.warp import SequentialTrainer
 from skrl.utils import set_seed
@@ -133,10 +132,10 @@ cfg["clip_predicted_values"] = False
 cfg["entropy_loss_scale"] = 0.0
 cfg["value_loss_scale"] = 0.5
 cfg["kl_threshold"] = 0
-# cfg["state_preprocessor"] = RunningStandardScaler
-# cfg["state_preprocessor_kwargs"] = {"size": env.observation_space, "device": device}
-# cfg["value_preprocessor"] = RunningStandardScaler
-# cfg["value_preprocessor_kwargs"] = {"size": 1, "device": device}
+cfg["observation_preprocessor"] = RunningStandardScaler
+cfg["observation_preprocessor_kwargs"] = {"size": env.observation_space, "device": device}
+cfg["value_preprocessor"] = RunningStandardScaler
+cfg["value_preprocessor_kwargs"] = {"size": 1, "device": device}
 # logging to TensorBoard and write checkpoints (in timesteps)
 cfg["experiment"]["write_interval"] = "auto"
 cfg["experiment"]["checkpoint_interval"] = "auto"
