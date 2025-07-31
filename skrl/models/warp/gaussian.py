@@ -18,7 +18,7 @@ def _log_prob(
     loc: float,
     scale: float,
 ):
-    return -(wp.pow(action - loc, 2.0) / (2.0 * wp.pow(scale, 2.0)) - wp.log(scale) - LOG_SQRT_2_PI)
+    return -wp.pow(action - loc, 2.0) / (2.0 * wp.pow(scale, 2.0)) - wp.log(scale) - LOG_SQRT_2_PI
 
 
 @wp.kernel
