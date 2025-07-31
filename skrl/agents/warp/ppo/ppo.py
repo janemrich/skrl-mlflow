@@ -10,6 +10,7 @@ from skrl.agents.warp import Agent
 from skrl.memories.warp import Memory
 from skrl.models.warp import Model
 from skrl.resources.optimizers.warp import Adam, clip_by_total_norm
+from skrl.resources.schedulers.warp import KLAdaptiveLR
 
 
 # fmt: off
@@ -302,9 +303,7 @@ class PPO(Agent):
                     lr=self._learning_rate,
                 )
             if self._learning_rate_scheduler is not None:
-                self.scheduler = self._learning_rate_scheduler(
-                    self.optimizer, **self.cfg["learning_rate_scheduler_kwargs"]
-                )
+                self.scheduler = self._learning_rate_scheduler(**self.cfg["learning_rate_scheduler_kwargs"])
 
             # self.checkpoint_modules["optimizer"] = self.optimizer
 
@@ -518,10 +517,9 @@ class PPO(Agent):
         self.value.enable_training_mode(True)
         last_values = self._value_preprocessor(last_values, inverse=True)
 
-        # TODO: replace 'full' with 'empty'
         values = self.memory.get_tensor_by_name("values")
-        returns = wp.full(shape=values.shape, value=wp.nan, dtype=wp.float32, device=self.device)
-        advantages = wp.full(shape=values.shape, value=wp.nan, dtype=wp.float32, device=self.device)
+        returns = wp.empty(shape=values.shape, dtype=wp.float32, device=self.device)
+        advantages = wp.empty(shape=values.shape, dtype=wp.float32, device=self.device)
         advantage = wp.zeros(shape=values.shape[1:], dtype=wp.float32, device=self.device)
 
         wp.launch(
@@ -587,6 +585,7 @@ class PPO(Agent):
                 self._policy_loss.zero_()
                 self._value_loss.zero_()
                 self._entropy_loss.zero_()
+                self._kl_divergence.zero_()
                 with wp.Tape() as tape:
                     _, outputs = self.policy.act({**inputs, "taken_actions": sampled_actions}, role="policy")
                     stddev = outputs["stddev"]
@@ -640,7 +639,9 @@ class PPO(Agent):
                 tape.backward(self._loss)
                 if self._grad_norm_clip > 0:
                     clip_by_total_norm(self._optimizer_grads, self._grad_norm_clip)
-                self.optimizer.step(self._optimizer_grads)
+                self.optimizer.step(
+                    self._optimizer_grads, lr=self._learning_rate if self._learning_rate_scheduler else None
+                )
                 tape.zero()
 
                 # update cumulative losses
@@ -651,8 +652,11 @@ class PPO(Agent):
 
             # update learning rate
             if self._learning_rate_scheduler:
-                self.policy_scheduler.step()
-                self.critic_scheduler.step()
+                if self._learning_rate_scheduler is KLAdaptiveLR:
+                    kl = np.mean(kl_divergences)
+                    self._learning_rate = self.scheduler(timestep, lr=self._learning_rate, kl=kl)
+                else:
+                    self._learning_rate *= self.scheduler(timestep)
 
         # record data
         self.track_data("Loss / Policy loss", cumulative_policy_loss / (self._learning_epochs * self._mini_batches))
@@ -665,4 +669,4 @@ class PPO(Agent):
         self.track_data("Policy / Standard deviation", stddev.numpy().mean().item())
 
         if self._learning_rate_scheduler:
-            self.track_data("Learning / Learning rate", self.scheduler.get_last_lr()[0])
+            self.track_data("Learning / Learning rate", self._learning_rate)

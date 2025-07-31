@@ -1,4 +1,4 @@
-from typing import Any, Mapping, Sequence, Tuple
+from typing import Any, Mapping, Optional, Sequence, Tuple
 
 import warp as wp
 import warp.optim as optim
@@ -35,6 +35,16 @@ class Adam(optim.Adam):
         :param eps: Term added to the denominator to improve numerical stability.
         """
         super().__init__([param.flatten() for param in params], lr=lr, betas=betas, eps=eps)
+
+    def step(self, gradients: Sequence[wp.array], *, lr: Optional[float] = None) -> None:
+        """Perform an optimization step to update parameters.
+
+        :param gradients: Gradients of the parameters.
+        :param lr: Learning rate.
+        """
+        if lr is not None:
+            self.lr = lr
+        super().step(gradients)
 
     def state_dict(self) -> Mapping[str, Any]:
         raise NotImplementedError
