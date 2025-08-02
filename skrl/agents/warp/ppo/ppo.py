@@ -9,7 +9,7 @@ import skrl.utils.framework.warp as warp_utils
 from skrl.agents.warp import Agent
 from skrl.memories.warp import Memory
 from skrl.models.warp import Model
-from skrl.resources.optimizers.warp import Adam, clip_by_total_norm
+from skrl.resources.optimizers.warp import Adam
 from skrl.resources.schedulers.warp import KLAdaptiveLR
 
 
@@ -122,7 +122,7 @@ def _compute_gae(
                 * (last_values[j, 0] + lambda_coefficient * advantage)
             )
         advantages[i, j, 0] = advantage
-        returns[i, j, 0] = advantages[i, j, 0] + values[i, j, 0]
+        returns[i, j, 0] = values[i, j, 0] + advantage
 
 
 @wp.kernel(enable_backward=False)
@@ -296,11 +296,12 @@ class PPO(Agent):
         # set up optimizer and learning rate scheduler
         if self.policy is not None and self.value is not None:
             if self.policy is self.value:
-                self.optimizer = Adam(self.policy.parameters(), lr=self._learning_rate)
+                self.optimizer = Adam(self.policy.parameters(), lr=self._learning_rate, device=self.device)
             else:
                 self.optimizer = Adam(
                     self.policy.parameters() + self.value.parameters(),
                     lr=self._learning_rate,
+                    device=self.device,
                 )
             if self._learning_rate_scheduler is not None:
                 self.scheduler = self._learning_rate_scheduler(**self.cfg["learning_rate_scheduler_kwargs"])
@@ -454,7 +455,7 @@ class PPO(Agent):
                 "states": self._state_preprocessor(states),
             }
             values, _ = self.value.act(inputs, role="value")
-            values = self._value_preprocessor(values, inverse=True)
+            values = self._value_preprocessor(values, inverse=True, inplace=True)
 
             # time-limit (truncation) bootstrapping
             if self._time_limit_bootstrap:
@@ -515,11 +516,11 @@ class PPO(Agent):
         self.value.enable_training_mode(False)
         last_values, _ = self.value.act(inputs, role="value")
         self.value.enable_training_mode(True)
-        last_values = self._value_preprocessor(last_values, inverse=True)
+        last_values = self._value_preprocessor(last_values, inverse=True, inplace=True)
 
         values = self.memory.get_tensor_by_name("values")
-        returns = wp.empty(shape=values.shape, dtype=wp.float32, device=self.device)
-        advantages = wp.empty(shape=values.shape, dtype=wp.float32, device=self.device)
+        returns = self.memory.get_tensor_by_name("returns")
+        advantages = self.memory.get_tensor_by_name("advantages")
 
         wp.launch(
             _compute_gae,
@@ -545,9 +546,12 @@ class PPO(Agent):
             device=self.device,
         )
 
-        self.memory.set_tensor_by_name("values", self._value_preprocessor(values, train=True))
-        self.memory.set_tensor_by_name("returns", self._value_preprocessor(returns, train=True))
-        self.memory.set_tensor_by_name("advantages", advantages)
+        # - since update is done in-place, there is no need to set the tensors back
+        # -- self.memory.set_tensor_by_name("values", self._value_preprocessor(values, train=True, inplace=True))
+        # -- self.memory.set_tensor_by_name("returns", self._value_preprocessor(returns, train=True, inplace=True))
+        # -- self.memory.set_tensor_by_name("advantages", advantages)
+        self._value_preprocessor(values, train=True, inplace=True)
+        self._value_preprocessor(returns, train=True, inplace=True)
 
         # sample mini-batches from memory
         sampled_batches = self.memory.sample_all(names=self._tensors_names, mini_batches=self._mini_batches)
@@ -636,7 +640,7 @@ class PPO(Agent):
                 # optimization step
                 tape.backward(self._loss)
                 if self._grad_norm_clip > 0:
-                    clip_by_total_norm(self._optimizer_grads, self._grad_norm_clip)
+                    self.optimizer.clip_by_total_norm(self._optimizer_grads, self._grad_norm_clip)
                 self.optimizer.step(
                     self._optimizer_grads, lr=self._learning_rate if self._learning_rate_scheduler else None
                 )
