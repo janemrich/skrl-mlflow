@@ -5,6 +5,7 @@ import re
 from skrl import logger
 from skrl.envs.wrappers.warp.base import MultiAgentEnvWrapper, Wrapper
 from skrl.envs.wrappers.warp.gymnasium_envs import GymnasiumWrapper
+from skrl.envs.wrappers.warp.isaaclab_envs import IsaacLabWrapper
 
 
 __all__ = ["wrap_env", "Wrapper", "MultiAgentEnvWrapper"]

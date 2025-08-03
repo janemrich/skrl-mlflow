@@ -63,6 +63,14 @@ class IsaacLabWrapper(Wrapper):
         self._observations = flatten_tensorized_space(tensorize_space(self.observation_space, observations["policy"]))
         return self._observations, reward.view(-1, 1), terminated.view(-1, 1), truncated.view(-1, 1), self._info
 
+    def state(self) -> Union[torch.Tensor, None]:
+        """Get the environment state
+
+        :return: State
+        :rtype: torch.Tensor
+        """
+        return None
+
     def reset(self) -> Tuple[torch.Tensor, Any]:
         """Reset the environment
 

@@ -52,13 +52,7 @@ class GymnasiumWrapper(Wrapper):
             return self._env.single_action_space
         return self._env.action_space
 
-    def step(self, actions: wp.array) -> Tuple[
-        wp.array,
-        wp.array,
-        wp.array,
-        wp.array,
-        Any,
-    ]:
+    def step(self, actions: wp.array) -> Tuple[wp.array, wp.array, wp.array, wp.array, Any]:
         """Perform a step in the environment
 
         :param actions: The actions to perform
