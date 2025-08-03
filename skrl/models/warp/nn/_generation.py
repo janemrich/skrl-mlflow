@@ -47,7 +47,7 @@ def create_kernel(input_size: int, output_size: int):
 def parse_modules(
     named_modules: Iterator[Tuple[str, "Module"]], uid: str, input: str, output: str
 ) -> Tuple[str, Sequence[str], Sequence[str], Sequence[str], Sequence[str]]:
-    from .activations import ReLU, Tanh
+    from .activations import ELU, ReLU, Tanh
     from .linear import Linear
     from .sequential import Sequential
 
@@ -58,7 +58,7 @@ def parse_modules(
 
     for i, (name, module) in enumerate(named_modules):
         # activation functions
-        if isinstance(module, (ReLU, Tanh)):
+        if isinstance(module, (ELU, ReLU, Tanh)):
             _uid = f"{uid}_fun{i}"
             _, _functions, _kernel_parameters, _kernel_arguments, _kernel_definitions = module.parse(_uid)
             functions.extend(_functions)

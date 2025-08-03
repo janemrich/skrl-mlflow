@@ -8,6 +8,29 @@ class ELU(Module):
         super().__init__()
         self._alpha = alpha
 
+    def parse(self, uid: str) -> Tuple[str, Sequence[str], Sequence[str], Sequence[str], Sequence[str]]:
+        impl = "" if self._alpha == 1.0 else f"{self._alpha} * "
+        # templates
+        name = "_elu"
+        template_function = f"""
+@wp.func
+def {{name}}(x: wp.float32):
+    if x > 0.0:
+        return x
+    else:
+        return {impl}(wp.exp(x) - 1.0)
+"""
+        template_kernel = """
+# ELU
+{output} = wp.tile_map({name}, {input})
+"""
+        # generation
+        functions = [template_function.strip().format(name=name)]
+        kernel_parameters = []
+        kernel_arguments = []
+        kernel_definitions = [template_kernel.strip().format(name=name, input="{input}", output="{output}")]
+        return None, functions, kernel_parameters, kernel_arguments, kernel_definitions
+
 
 class ReLU(Module):
     def __init__(self):
