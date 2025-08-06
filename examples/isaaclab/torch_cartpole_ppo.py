@@ -8,7 +8,7 @@ from skrl.envs.wrappers.torch import wrap_env
 from skrl.memories.torch import RandomMemory
 from skrl.models.torch import DeterministicMixin, GaussianMixin, Model
 from skrl.resources.preprocessors.torch import RunningStandardScaler
-from skrl.resources.schedulers.torch import KLAdaptiveRL
+from skrl.resources.schedulers.torch import KLAdaptiveLR
 from skrl.trainers.torch import SequentialTrainer
 from skrl.utils import set_seed
 
@@ -17,11 +17,12 @@ from skrl.utils import set_seed
 set_seed()  # e.g. `set_seed(42)` for fixed seed
 
 
-# define shared model (stochastic and deterministic models) using mixins
-class Shared(GaussianMixin, DeterministicMixin, Model):
+# define models (stochastic and deterministic models) using mixins
+class Policy(GaussianMixin, Model):
     def __init__(
         self,
         observation_space,
+        state_space,
         action_space,
         device,
         clip_actions=False,
@@ -30,31 +31,48 @@ class Shared(GaussianMixin, DeterministicMixin, Model):
         max_log_std=2,
         reduction="sum",
     ):
-        Model.__init__(self, observation_space, action_space, device)
-        GaussianMixin.__init__(self, clip_actions, clip_log_std, min_log_std, max_log_std, reduction)
-        DeterministicMixin.__init__(self, clip_actions)
+        Model.__init__(
+            self, observation_space=observation_space, state_space=state_space, action_space=action_space, device=device
+        )
+        GaussianMixin.__init__(
+            self,
+            clip_actions=clip_actions,
+            clip_log_std=clip_log_std,
+            min_log_std=min_log_std,
+            max_log_std=max_log_std,
+            reduction=reduction,
+        )
 
-        self.net = nn.Sequential(nn.Linear(self.num_observations, 32), nn.ELU(), nn.Linear(32, 32), nn.ELU())
-
-        self.mean_layer = nn.Linear(32, self.num_actions)
-        self.log_std_parameter = nn.Parameter(torch.ones(self.num_actions))
-
-        self.value_layer = nn.Linear(32, 1)
-
-    def act(self, inputs, role):
-        if role == "policy":
-            return GaussianMixin.act(self, inputs, role)
-        elif role == "value":
-            return DeterministicMixin.act(self, inputs, role)
+        self.net = nn.Sequential(
+            nn.Linear(self.num_observations, 32),
+            nn.ELU(),
+            nn.Linear(32, 32),
+            nn.ELU(),
+            nn.Linear(32, self.num_actions),
+        )
+        self.log_std_parameter = nn.Parameter(torch.zeros(self.num_actions))
 
     def compute(self, inputs, role):
-        if role == "policy":
-            self._shared_output = self.net(inputs["states"])
-            return self.mean_layer(self._shared_output), self.log_std_parameter, {}
-        elif role == "value":
-            shared_output = self.net(inputs["states"]) if self._shared_output is None else self._shared_output
-            self._shared_output = None
-            return self.value_layer(shared_output), {}
+        return self.net(inputs["observations"]), {"log_std": self.log_std_parameter}
+
+
+class Value(DeterministicMixin, Model):
+    def __init__(self, observation_space, state_space, action_space, device):
+        Model.__init__(
+            self, observation_space=observation_space, state_space=state_space, action_space=action_space, device=device
+        )
+        DeterministicMixin.__init__(self)
+
+        self.net = nn.Sequential(
+            nn.Linear(self.num_observations, 32),
+            nn.ELU(),
+            nn.Linear(32, 32),
+            nn.ELU(),
+            nn.Linear(32, 1),
+        )
+
+    def compute(self, inputs, role):
+        return self.net(inputs["observations"]), {}
 
 
 # load and wrap the Isaac Lab environment
@@ -72,8 +90,8 @@ memory = RandomMemory(memory_size=16, num_envs=env.num_envs, device=device)
 # PPO requires 2 models, visit its documentation for more details
 # https://skrl.readthedocs.io/en/latest/api/agents/ppo.html#models
 models = {}
-models["policy"] = Shared(env.observation_space, env.action_space, device)
-models["value"] = models["policy"]  # same instance: shared model
+models["policy"] = Policy(env.observation_space, env.state_space, env.action_space, device)
+models["value"] = Value(env.observation_space, env.state_space, env.action_space, device)
 
 
 # configure and instantiate the agent (visit its documentation to see all the options)
@@ -112,6 +130,7 @@ agent = PPO(
     memory=memory,
     cfg=cfg,
     observation_space=env.observation_space,
+    state_space=env.state_space,
     action_space=env.action_space,
     device=device,
 )
