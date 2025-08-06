@@ -11,7 +11,7 @@ from skrl.memories.warp import Memory
 from skrl.models.warp import Model
 from skrl.resources.optimizers.warp import Adam
 from skrl.resources.schedulers.warp import KLAdaptiveLR
-from skrl.utils import ExecutionTimer
+from skrl.utils import Timer
 
 
 # fmt: off
@@ -489,7 +489,7 @@ class PPO(Agent):
         """
         self._rollout += 1
         if not self._rollout % self._rollouts and timestep >= self._learning_starts:
-            with ExecutionTimer() as timer:
+            with Timer() as timer:
                 self.enable_training_mode(True)
                 self.update(timestep=timestep, timesteps=timesteps)
                 self.enable_training_mode(False)
@@ -573,8 +573,14 @@ class PPO(Agent):
             ) in sampled_batches:
 
                 inputs = {
-                    "observations": self._observation_preprocessor(sampled_observations, train=not epoch),
-                    "states": self._state_preprocessor(sampled_states, train=not epoch),
+                    "observations": (
+                        sampled_observations
+                        if epoch
+                        else self._observation_preprocessor(sampled_observations, train=True, inplace=True)
+                    ),
+                    "states": (
+                        sampled_states if epoch else self._state_preprocessor(sampled_states, train=True, inplace=True)
+                    ),
                 }
 
                 # compute loss

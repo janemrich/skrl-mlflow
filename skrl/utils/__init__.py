@@ -113,7 +113,7 @@ def set_seed(seed: Optional[int] = None, deterministic: bool = False) -> int:
     return seed
 
 
-class ExecutionTimer:
+class Timer:
     def __enter__(self):
         self._elapsed_time = None
         self._start_time = time.time()
