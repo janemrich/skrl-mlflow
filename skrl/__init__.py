@@ -345,6 +345,10 @@ class _Config(object):
                 self._key = 0
                 # device
                 self._device = "cuda"
+                # kernel-related config
+                self._block_dim = 256
+                self._tile_dim_0 = 64
+                self._tile_dim_1 = 64
 
                 # init Warp (don't import if it hasn't been imported)
                 if "warp" in sys.modules:
@@ -388,7 +392,7 @@ class _Config(object):
 
             @property
             def key(self) -> int:
-                """Pseudo-random number generator (PRNG) key"""
+                """Pseudo-random number generator (PRNG) key."""
                 return self._key
 
             @key.setter
