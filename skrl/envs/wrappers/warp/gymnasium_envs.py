@@ -17,10 +17,9 @@ from skrl.utils.spaces.warp import (
 
 class GymnasiumWrapper(Wrapper):
     def __init__(self, env: Any) -> None:
-        """Gymnasium environment wrapper
+        """Gymnasium environment wrapper.
 
-        :param env: The environment to wrap
-        :type env: Any supported Gymnasium environment
+        :param env: The environment instance to wrap.
         """
         super().__init__(env)
 
@@ -40,26 +39,24 @@ class GymnasiumWrapper(Wrapper):
 
     @property
     def observation_space(self) -> gymnasium.Space:
-        """Observation space"""
+        """Observation space."""
         if self._vectorized:
             return self._env.single_observation_space
         return self._env.observation_space
 
     @property
     def action_space(self) -> gymnasium.Space:
-        """Action space"""
+        """Action space."""
         if self._vectorized:
             return self._env.single_action_space
         return self._env.action_space
 
     def step(self, actions: wp.array) -> Tuple[wp.array, wp.array, wp.array, wp.array, Any]:
-        """Perform a step in the environment
+        """Perform a step in the environment.
 
-        :param actions: The actions to perform
-        :type actions: wp.array
+        :param actions: The actions to perform.
 
-        :return: Observation, reward, terminated, truncated, info
-        :rtype: tuple of wp.array and any other info
+        :return: Observation, reward, terminated, truncated, info.
         """
         actions = untensorize_space(
             self.action_space,
@@ -83,10 +80,9 @@ class GymnasiumWrapper(Wrapper):
         return observation, reward, terminated, truncated, info
 
     def state(self) -> Union[wp.array, None]:
-        """Get the environment state
+        """Get the environment state.
 
-        :return: State
-        :rtype: wp.array
+        :return: State.
         """
         try:
             return flatten_tensorized_space(
@@ -94,17 +90,11 @@ class GymnasiumWrapper(Wrapper):
             )
         except:
             return None
-        # if hasattr(self._unwrapped, "state"):
-        #     return flatten_tensorized_space(
-        #         tensorize_space(self.state_space, self._unwrapped.state(), device=self.device)
-        #     )
-        # return None
 
     def reset(self) -> Tuple[wp.array, Any]:
-        """Reset the environment
+        """Reset the environment.
 
-        :return: Observation, info
-        :rtype: wp.array and any other info
+        :return: Observation, info.
         """
         # handle vectorized environments (vector environments are autoreset)
         if self._vectorized:
@@ -121,11 +111,11 @@ class GymnasiumWrapper(Wrapper):
         return observation, info
 
     def render(self, *args, **kwargs) -> Any:
-        """Render the environment"""
+        """Render the environment."""
         if self._vectorized:
             return self._env.call("render", *args, **kwargs)
         return self._env.render(*args, **kwargs)
 
     def close(self) -> None:
-        """Close the environment"""
+        """Close the environment."""
         self._env.close()

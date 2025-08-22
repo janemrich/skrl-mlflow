@@ -1,5 +1,6 @@
 from typing import Any, Mapping, Sequence, Tuple, Union
 
+from abc import ABC, abstractmethod
 import gymnasium
 
 import warp as wp
@@ -7,12 +8,11 @@ import warp as wp
 from skrl import config
 
 
-class Wrapper(object):
+class Wrapper(ABC):
     def __init__(self, env: Any) -> None:
-        """Base wrapper class for RL environments
+        """Base wrapper class for RL environments.
 
-        :param env: The environment to wrap
-        :type env: Any supported RL environment
+        :param env: The environment instance to wrap.
         """
         self._env = env
         try:
@@ -27,15 +27,13 @@ class Wrapper(object):
             self._device = config.warp.parse_device(None)
 
     def __getattr__(self, key: str) -> Any:
-        """Get an attribute from the wrapped environment
+        """Get an attribute from the wrapped environment.
 
-        :param key: The attribute name
-        :type key: str
+        :param key: The attribute name.
 
-        :raises AttributeError: If the attribute does not exist
+        :return: The attribute value.
 
-        :return: The attribute value
-        :rtype: Any
+        :raises AttributeError: If the attribute does not exist.
         """
         if hasattr(self._env, key):
             return getattr(self._env, key)
@@ -45,105 +43,88 @@ class Wrapper(object):
             f"Wrapped environment ({self._unwrapped.__class__.__name__}) does not have attribute '{key}'"
         )
 
+    @abstractmethod
     def reset(self) -> Tuple[wp.array, Any]:
-        """Reset the environment
+        """Reset the environment.
 
-        :raises NotImplementedError: Not implemented
-
-        :return: Observation, info
-        :rtype: wp.array and any other info
+        :return: Observation, info.
         """
-        raise NotImplementedError
+        pass
 
-    def step(self, actions: wp.array) -> Tuple[
-        wp.array,
-        wp.array,
-        wp.array,
-        wp.array,
-        Any,
-    ]:
-        """Perform a step in the environment
+    @abstractmethod
+    def step(self, actions: wp.array) -> Tuple[wp.array, wp.array, wp.array, wp.array, Any]:
+        """Perform a step in the environment.
 
-        :param actions: The actions to perform
-        :type actions: wp.array
+        :param actions: The actions to perform.
 
-        :raises NotImplementedError: Not implemented
-
-        :return: Observation, reward, terminated, truncated, info
-        :rtype: tuple of wp.array and any other info
+        :return: Observation, reward, terminated, truncated, info.
         """
-        raise NotImplementedError
+        pass
 
-    def state(self) -> wp.array:
-        """Get the environment state
+    @abstractmethod
+    def state(self) -> Union[wp.array, None]:
+        """Get the environment state.
 
-        :raises NotImplementedError: Not implemented
-
-        :return: State
-        :rtype: wp.array
+        :return: State.
         """
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def render(self, *args, **kwargs) -> Any:
-        """Render the environment
+        """Render the environment.
 
-        :raises NotImplementedError: Not implemented
-
-        :return: Any value from the wrapped environment
-        :rtype: any
+        :return: Any value from the wrapped environment.
         """
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def close(self) -> None:
-        """Close the environment
-
-        :raises NotImplementedError: Not implemented
-        """
-        raise NotImplementedError
+        """Close the environment."""
+        pass
 
     @property
     def device(self) -> wp.context.Device:
-        """The device used by the environment
+        """The device used by the environment.
 
         If the wrapped environment does not have the ``device`` property, the value of this property
-        will be ``"cuda"`` or ``"cpu"`` depending on the device availability
+        will be ``"cuda"`` or ``"cpu"`` depending on the device availability.
         """
         return self._device
 
     @property
     def num_envs(self) -> int:
-        """Number of environments
+        """Number of environments.
 
-        If the wrapped environment does not have the ``num_envs`` property, it will be set to 1
+        If the wrapped environment does not have the ``num_envs`` property, it will be set to 1.
         """
         return self._unwrapped.num_envs if hasattr(self._unwrapped, "num_envs") else 1
 
     @property
     def num_agents(self) -> int:
-        """Number of agents
+        """Number of agents.
 
-        If the wrapped environment does not have the ``num_agents`` property, it will be set to 1
+        If the wrapped environment does not have the ``num_agents`` property, it will be set to 1.
         """
         return self._unwrapped.num_agents if hasattr(self._unwrapped, "num_agents") else 1
 
     @property
     def state_space(self) -> Union[gymnasium.Space, None]:
-        """State space
+        """State space.
 
-        If the wrapped environment does not have the ``state_space`` property, ``None`` will be returned
+        If the wrapped environment does not have the ``state_space`` property, ``None`` will be returned.
         """
         return self._unwrapped.state_space if hasattr(self._unwrapped, "state_space") else None
 
     @property
     def observation_space(self) -> gymnasium.Space:
-        """Observation space"""
+        """Observation space."""
         return self._unwrapped.observation_space
 
     @property
     def action_space(self) -> gymnasium.Space:
-        """Action space"""
+        """Action space."""
         return self._unwrapped.action_space
 
 
-class MultiAgentEnvWrapper(object):
+class MultiAgentEnvWrapper(ABC):
     pass
