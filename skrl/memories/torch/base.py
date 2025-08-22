@@ -155,7 +155,7 @@ class Memory(ABC):
         # update internal variables
         self.tensors[name] = getattr(self, f"_tensor_{name}")
         self.tensors_view[name] = self.tensors[name].view((-1, size))
-        # fill (float) tensors with NaN. This is useful for early misuse detection.
+        # fill (float) tensors with NaN. This is useful for early misuse detection
         for tensor in self.tensors.values():
             if torch.is_floating_point(tensor):
                 tensor.fill_(float("nan"))
