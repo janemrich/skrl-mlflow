@@ -60,10 +60,19 @@ class RandomMemory(Memory):
         :return: Sampled data from tensors sorted according to their position in the list of names.
             The sampled tensors will have the following shape: ``(batch_size, data_size)``.
         """
+        # compute valid memory sizes
+        size = len(self)
+        if sequence_length > 1:
+            sequence_indexes = np.arange(0, self.num_envs * sequence_length, self.num_envs)
+            size -= sequence_indexes[-1].item()
         # generate random indexes
         if self._replacement:
-            indexes = np.random.randint(0, len(self), (batch_size,))
+            indexes = np.random.randint(0, size, (batch_size,))
         else:
-            indexes = np.random.permutation(len(self))[:batch_size]
-
+            indexes = np.random.permutation(size)[:batch_size]
+        # generate sequence indexes
+        if sequence_length > 1:
+            indexes = (sequence_indexes.repeat(indexes.shape[0], 1) + indexes.reshape(-1, 1)).reshape(-1)
+        # sample by indexes
+        self.sampling_indexes = indexes
         return self.sample_by_index(names=names, indexes=indexes, mini_batches=mini_batches)

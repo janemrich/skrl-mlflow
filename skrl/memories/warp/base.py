@@ -276,28 +276,15 @@ class Memory(ABC):
             The sampled tensors will have the following shape: ``(number_of_indexes, data_size)``.
         """
         if mini_batches > 1:
-            batches = np.array_split(indexes, mini_batches)
+            batches = [
+                wp.array(batch, dtype=wp.int32, device=self.device) for batch in np.array_split(indexes, mini_batches)
+            ]
             return [
-                [
-                    (
-                        self.tensors_view[name][wp.array(batch, dtype=wp.int32, device=self.device)].contiguous()
-                        if name in self.tensors
-                        else None
-                    )
-                    for name in names
-                ]
+                [(self.tensors_view[name][batch].contiguous() if name in self.tensors else None) for name in names]
                 for batch in batches
             ]
-        return [
-            [
-                (
-                    self.tensors_view[name][wp.array(indexes, dtype=wp.int32, device=self.device)].contiguous()
-                    if name in self.tensors
-                    else None
-                )
-                for name in names
-            ]
-        ]
+        indexes = wp.array(indexes, dtype=wp.int32, device=self.device)
+        return [[(self.tensors_view[name][indexes].contiguous() if name in self.tensors else None) for name in names]]
 
     def sample_all(
         self, names: Sequence[str], *, mini_batches: int = 1, sequence_length: int = 1
