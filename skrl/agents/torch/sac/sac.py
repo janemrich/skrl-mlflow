@@ -14,6 +14,7 @@ from skrl import config, logger
 from skrl.agents.torch import Agent
 from skrl.memories.torch import Memory
 from skrl.models.torch import Model
+from skrl.utils import ScopedTimer
 
 
 # fmt: off
@@ -127,15 +128,6 @@ class SAC(Agent):
             if self.critic_2 is not None:
                 self.critic_2.broadcast_parameters()
 
-        if self.target_critic_1 is not None and self.target_critic_2 is not None:
-            # freeze target networks with respect to optimizers (update via .update_parameters())
-            self.target_critic_1.freeze_parameters(True)
-            self.target_critic_2.freeze_parameters(True)
-
-            # update target networks (hard update)
-            self.target_critic_1.update_parameters(self.critic_1, polyak=1)
-            self.target_critic_2.update_parameters(self.critic_2, polyak=1)
-
         # configuration
         self._gradient_steps = self.cfg["gradient_steps"]
         self._batch_size = self.cfg["batch_size"]
@@ -204,6 +196,16 @@ class SAC(Agent):
 
             self.checkpoint_modules["policy_optimizer"] = self.policy_optimizer
             self.checkpoint_modules["critic_optimizer"] = self.critic_optimizer
+
+        # set up target networks
+        if self.target_critic_1 is not None and self.target_critic_2 is not None:
+            # freeze target networks with respect to optimizers (update via .update_parameters())
+            self.target_critic_1.freeze_parameters(True)
+            self.target_critic_2.freeze_parameters(True)
+
+            # update target networks (hard update)
+            self.target_critic_1.update_parameters(self.critic_1, polyak=1)
+            self.target_critic_2.update_parameters(self.critic_2, polyak=1)
 
         # set up preprocessors
         # - observations
@@ -353,9 +355,11 @@ class SAC(Agent):
         :param timesteps: Number of timesteps.
         """
         if timestep >= self._learning_starts:
-            self.enable_training_mode(True)
-            self.update(timestep=timestep, timesteps=timesteps)
-            self.enable_training_mode(False)
+            with ScopedTimer() as timer:
+                self.enable_training_mode(True)
+                self.update(timestep=timestep, timesteps=timesteps)
+                self.enable_training_mode(False)
+                self.track_data("Stats / Algorithm update time (ms)", timer.elapsed_time_ms)
 
         # write tracking data and checkpoints
         super().post_interaction(timestep=timestep, timesteps=timesteps)

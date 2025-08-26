@@ -20,8 +20,8 @@ from ...utilities import SingleAgentEnv, check_config_keys, get_test_mixed_preci
 
 @hypothesis.given(
     num_envs=st.integers(min_value=1, max_value=5),
-    gradient_steps=st.integers(min_value=1, max_value=2),
     # agent config
+    gradient_steps=st.integers(min_value=1, max_value=2),
     batch_size=st.integers(min_value=1, max_value=5),
     discount_factor=st.floats(min_value=0, max_value=1),
     polyak=st.floats(min_value=0, max_value=1),
@@ -34,7 +34,7 @@ from ...utilities import SingleAgentEnv, check_config_keys, get_test_mixed_preci
     random_timesteps=st.integers(min_value=0, max_value=5),
     learning_starts=st.integers(min_value=0, max_value=5),
     grad_norm_clip=st.floats(min_value=0, max_value=1),
-    exploration=st.one_of(st.none(), st.just(OrnsteinUhlenbeckNoise), st.just(GaussianNoise)),
+    exploration_noise=st.one_of(st.none(), st.just(OrnsteinUhlenbeckNoise), st.just(GaussianNoise)),
     exploration_initial_scale=st.floats(min_value=0, max_value=1),
     exploration_final_scale=st.floats(min_value=0, max_value=1),
     exploration_timesteps=st.one_of(st.none(), st.integers(min_value=1, max_value=50)),
@@ -70,7 +70,7 @@ def test_agent(
     random_timesteps,
     learning_starts,
     grad_norm_clip,
-    exploration,
+    exploration_noise,
     exploration_initial_scale,
     exploration_final_scale,
     exploration_timesteps,
@@ -189,11 +189,15 @@ def test_agent(
         "learning_starts": learning_starts,
         "grad_norm_clip": grad_norm_clip,
         "exploration": {
+            "noise": exploration_noise,
+            "noise_kwargs": {},
             "initial_scale": exploration_initial_scale,
             "final_scale": exploration_final_scale,
             "timesteps": exploration_timesteps,
         },
         "policy_delay": policy_delay,
+        "smooth_regularization_noise": smooth_regularization_noise,
+        "smooth_regularization_noise_kwargs": {},
         "smooth_regularization_clip": smooth_regularization_clip,
         "rewards_shaper": rewards_shaper,
         "mixed_precision": get_test_mixed_precision(mixed_precision),
@@ -212,21 +216,20 @@ def test_agent(
     ] = learning_rate_scheduler_kwargs_value
     # noise
     # - exploration
-    if exploration is None:
-        cfg["exploration"]["noise"] = None
-    elif exploration is OrnsteinUhlenbeckNoise:
-        cfg["exploration"]["noise"] = OrnsteinUhlenbeckNoise(theta=0.1, sigma=0.2, base_scale=1.0, device=env.device)
-    elif exploration is GaussianNoise:
-        cfg["exploration"]["noise"] = GaussianNoise(mean=0, std=0.1, device=env.device)
+    if exploration_noise is OrnsteinUhlenbeckNoise:
+        cfg["exploration"]["noise_kwargs"] = {"theta": 0.1, "sigma": 0.2, "base_scale": 1.0, "device": env.device}
+    elif exploration_noise is GaussianNoise:
+        cfg["exploration"]["noise_kwargs"] = {"mean": 0, "std": 0.1, "device": env.device}
     # - regularization
-    if smooth_regularization_noise is None:
-        cfg["smooth_regularization_noise"] = None
-    elif smooth_regularization_noise is OrnsteinUhlenbeckNoise:
-        cfg["smooth_regularization_noise"] = OrnsteinUhlenbeckNoise(
-            theta=0.1, sigma=0.2, base_scale=1.0, device=env.device
-        )
+    if smooth_regularization_noise is OrnsteinUhlenbeckNoise:
+        cfg["smooth_regularization_noise_kwargs"] = {
+            "theta": 0.1,
+            "sigma": 0.2,
+            "base_scale": 1.0,
+            "device": env.device,
+        }
     elif smooth_regularization_noise is GaussianNoise:
-        cfg["smooth_regularization_noise"] = GaussianNoise(mean=0, std=0.1, device=env.device)
+        cfg["smooth_regularization_noise_kwargs"] = {"mean": 0, "std": 0.1, "device": env.device}
     check_config_keys(cfg, DEFAULT_CONFIG)
     check_config_keys(cfg["experiment"], DEFAULT_CONFIG["experiment"])
     check_config_keys(cfg["exploration"], DEFAULT_CONFIG["exploration"])

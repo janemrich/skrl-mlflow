@@ -15,6 +15,7 @@ from skrl.agents.torch import Agent
 from skrl.memories.torch import Memory
 from skrl.models.torch import Model
 from skrl.resources.schedulers.torch import KLAdaptiveLR
+from skrl.utils import ScopedTimer
 
 
 # fmt: off
@@ -80,6 +81,45 @@ AMP_DEFAULT_CONFIG = {
 }
 # [end-config-dict-torch]
 # fmt: on
+
+
+def compute_gae(
+    *,
+    rewards: torch.Tensor,
+    dones: torch.Tensor,
+    values: torch.Tensor,
+    next_values: torch.Tensor,
+    discount_factor: float = 0.99,
+    lambda_coefficient: float = 0.95,
+) -> torch.Tensor:
+    """Compute the Generalized Advantage Estimator (GAE).
+
+    :param rewards: Rewards obtained by the agent.
+    :param dones: Signals to indicate that episodes have ended.
+    :param values: Values obtained by the agent.
+    :param next_values: Next values obtained by the agent.
+    :param discount_factor: Discount factor.
+    :param lambda_coefficient: Lambda coefficient.
+
+    :return: Generalized Advantage Estimator.
+    """
+    advantage = 0
+    advantages = torch.zeros_like(rewards)
+    not_dones = dones.logical_not()
+    memory_size = rewards.shape[0]
+
+    # advantages computation
+    for i in reversed(range(memory_size)):
+        advantage = (
+            rewards[i] - values[i] + discount_factor * (next_values[i] + lambda_coefficient * not_dones[i] * advantage)
+        )
+        advantages[i] = advantage
+    # returns computation
+    returns = advantages + values
+    # normalize advantages
+    advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+
+    return returns, advantages
 
 
 class AMP(Agent):
@@ -458,9 +498,11 @@ class AMP(Agent):
         """
         self._rollout += 1
         if not self._rollout % self._rollouts and timestep >= self._learning_starts:
-            self.enable_training_mode(True)
-            self.update(timestep=timestep, timesteps=timesteps)
-            self.enable_training_mode(False)
+            with ScopedTimer() as timer:
+                self.enable_training_mode(True)
+                self.update(timestep=timestep, timesteps=timesteps)
+                self.enable_training_mode(False)
+                self.track_data("Stats / Algorithm update time (ms)", timer.elapsed_time_ms)
 
         # write tracking data and checkpoints
         super().post_interaction(timestep=timestep, timesteps=timesteps)
@@ -471,46 +513,6 @@ class AMP(Agent):
         :param timestep: Current timestep.
         :param timesteps: Number of timesteps.
         """
-
-        def compute_gae(
-            rewards: torch.Tensor,
-            dones: torch.Tensor,
-            values: torch.Tensor,
-            next_values: torch.Tensor,
-            discount_factor: float = 0.99,
-            lambda_coefficient: float = 0.95,
-        ) -> torch.Tensor:
-            """Compute the Generalized Advantage Estimator (GAE).
-
-            :param rewards: Rewards obtained by the agent.
-            :param dones: Signals to indicate that episodes have ended.
-            :param values: Values obtained by the agent.
-            :param next_values: Next values obtained by the agent.
-            :param discount_factor: Discount factor.
-            :param lambda_coefficient: Lambda coefficient.
-
-            :return: Generalized Advantage Estimator.
-            """
-            advantage = 0
-            advantages = torch.zeros_like(rewards)
-            not_dones = dones.logical_not()
-            memory_size = rewards.shape[0]
-
-            # advantages computation
-            for i in reversed(range(memory_size)):
-                advantage = (
-                    rewards[i]
-                    - values[i]
-                    + discount_factor * (next_values[i] + lambda_coefficient * not_dones[i] * advantage)
-                )
-                advantages[i] = advantage
-            # returns computation
-            returns = advantages + values
-            # normalize advantages
-            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-
-            return returns, advantages
-
         # update dataset of reference motions
         self.motion_dataset.add_samples(observations=self.collect_reference_motions(self._amp_batch_size))
 

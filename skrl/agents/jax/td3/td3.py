@@ -13,6 +13,7 @@ from skrl.agents.jax import Agent
 from skrl.memories.jax import Memory
 from skrl.models.jax import Model
 from skrl.resources.optimizers.jax import Adam
+from skrl.utils import ScopedTimer
 
 
 # fmt: off
@@ -40,15 +41,17 @@ TD3_DEFAULT_CONFIG = {
     "grad_norm_clip": 0,            # clipping coefficient for the norm of the gradients
 
     "exploration": {
-        "noise": None,              # exploration noise
+        "noise": None,              # exploration noise (see skrl.resources.noises)
+        "noise_kwargs": {},         # exploration noise's kwargs (e.g. {"std": 0.1})
         "initial_scale": 1.0,       # initial scale for the noise
         "final_scale": 1e-3,        # final scale for the noise
         "timesteps": None,          # timesteps for the noise decay
     },
 
-    "policy_delay": 2,                      # policy delay update with respect to critic update
-    "smooth_regularization_noise": None,    # smooth noise for regularization
-    "smooth_regularization_clip": 0.5,      # clip for smooth regularization
+    "policy_delay": 2,                         # policy delay update with respect to critic update
+    "smooth_regularization_noise": None,       # smooth noise for regularization (see skrl.resources.noises)
+    "smooth_regularization_noise_kwargs": {},  # smooth noise for regularization's kwargs (e.g. {"std": 0.1})
+    "smooth_regularization_clip": 0.5,         # clip for smooth regularization
 
     "rewards_shaper": None,         # rewards shaping function: Callable(reward, timestep, timesteps) -> reward
 
@@ -234,10 +237,20 @@ class TD3(Agent):
 
         self._smooth_regularization_noise = self.cfg["smooth_regularization_noise"]
         self._smooth_regularization_clip = self.cfg["smooth_regularization_clip"]
-        if self._smooth_regularization_noise is None:
-            logger.warning("agents:TD3: No smooth regularization noise specified to reduce variance during training")
 
         self._rewards_shaper = self.cfg["rewards_shaper"]
+
+        # set up noise
+        if self._exploration_noise is not None:
+            self._exploration_noise = self._exploration_noise(**self.cfg["exploration"]["noise_kwargs"])
+        else:
+            logger.warning("agents:TD3: No exploration noise specified, training performance may be degraded")
+        if self._smooth_regularization_noise is not None:
+            self._smooth_regularization_noise = self._smooth_regularization_noise(
+                **self.cfg["smooth_regularization_noise_kwargs"]
+            )
+        else:
+            logger.warning("agents:TD3: No smooth regularization noise specified, training variance may be high")
 
         # set up optimizers and learning rate schedulers
         if self.policy is not None and self.critic_1 is not None and self.critic_2 is not None:
@@ -490,9 +503,11 @@ class TD3(Agent):
         :param timesteps: Number of timesteps.
         """
         if timestep >= self._learning_starts:
-            self.enable_training_mode(True)
-            self.update(timestep=timestep, timesteps=timesteps)
-            self.enable_training_mode(False)
+            with ScopedTimer() as timer:
+                self.enable_training_mode(True)
+                self.update(timestep=timestep, timesteps=timesteps)
+                self.enable_training_mode(False)
+                self.track_data("Stats / Algorithm update time (ms)", timer.elapsed_time_ms)
 
         # write tracking data and checkpoints
         super().post_interaction(timestep=timestep, timesteps=timesteps)

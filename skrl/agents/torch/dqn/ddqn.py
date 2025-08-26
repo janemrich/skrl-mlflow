@@ -12,6 +12,7 @@ from skrl import config, logger
 from skrl.agents.torch import Agent
 from skrl.memories.torch import Memory
 from skrl.models.torch import Model
+from skrl.utils import ScopedTimer
 
 
 # fmt: off
@@ -116,13 +117,6 @@ class DDQN(Agent):
             if self.q_network is not None:
                 self.q_network.broadcast_parameters()
 
-        if self.target_q_network is not None:
-            # freeze target networks with respect to optimizers (update via .update_parameters())
-            self.target_q_network.freeze_parameters(True)
-
-            # update target networks (hard update)
-            self.target_q_network.update_parameters(self.q_network, polyak=1)
-
         # configuration
         self._gradient_steps = self.cfg["gradient_steps"]
         self._batch_size = self.cfg["batch_size"]
@@ -166,6 +160,14 @@ class DDQN(Agent):
                 )
 
             self.checkpoint_modules["optimizer"] = self.optimizer
+
+        # set up target networks
+        if self.target_q_network is not None:
+            # freeze target networks with respect to optimizers (update via .update_parameters())
+            self.target_q_network.freeze_parameters(True)
+
+            # update target networks (hard update)
+            self.target_q_network.update_parameters(self.q_network, polyak=1)
 
         # set up preprocessors
         # - observations
@@ -329,9 +331,11 @@ class DDQN(Agent):
         :param timesteps: Number of timesteps.
         """
         if timestep >= self._learning_starts and not timestep % self._update_interval:
-            self.enable_training_mode(True)
-            self.update(timestep=timestep, timesteps=timesteps)
-            self.enable_training_mode(False)
+            with ScopedTimer() as timer:
+                self.enable_training_mode(True)
+                self.update(timestep=timestep, timesteps=timesteps)
+                self.enable_training_mode(False)
+                self.track_data("Stats / Algorithm update time (ms)", timer.elapsed_time_ms)
 
         # write tracking data and checkpoints
         super().post_interaction(timestep=timestep, timesteps=timesteps)

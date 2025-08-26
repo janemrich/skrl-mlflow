@@ -5,7 +5,7 @@ from tensorboard.summary.writer.event_file_writer import EventFileWriter
 
 
 class SummaryWriter:
-    def __init__(self, log_dir: str, queue_size: int = 10, flush_seconds: int = 120):
+    def __init__(self, log_dir: str, *, queue_size: int = 10, flush_seconds: int = 120):
         """TensorBoard summary writer.
 
         :param log_dir: Directory to save the event file.
@@ -14,7 +14,7 @@ class SummaryWriter:
         """
         self._event_file_writer = EventFileWriter(log_dir, max_queue_size=queue_size, flush_secs=flush_seconds)
 
-    def add_scalar(self, tag: str, value: float, timestep: int) -> None:
+    def add_scalar(self, *, tag: str, value: float, timestep: int) -> None:
         """Add a scalar value to the summary.
 
         :param tag: Name of the scalar record.
