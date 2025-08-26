@@ -41,7 +41,8 @@ DDPG_DEFAULT_CONFIG = {
     "grad_norm_clip": 0,            # clipping coefficient for the norm of the gradients
 
     "exploration": {
-        "noise": None,              # exploration noise
+        "noise": None,              # exploration noise (see skrl.resources.noises)
+        "noise_kwargs": {},         # exploration noise's kwargs (e.g. {"std": 0.1})
         "initial_scale": 1.0,       # initial scale for the noise
         "final_scale": 1e-3,        # final scale for the noise
         "timesteps": None,          # timesteps for the noise decay
@@ -200,6 +201,12 @@ class DDPG(Agent):
         self._exploration_timesteps = self.cfg["exploration"]["timesteps"]
 
         self._rewards_shaper = self.cfg["rewards_shaper"]
+
+        # set up noise
+        if self._exploration_noise is not None:
+            self._exploration_noise = self._exploration_noise(**self.cfg["exploration"]["noise_kwargs"])
+        else:
+            logger.warning("agents:DDPG: No exploration noise specified, training performance may be degraded")
 
         # set up optimizers and learning rate schedulers
         if self.policy is not None and self.critic is not None:

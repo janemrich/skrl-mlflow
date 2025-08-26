@@ -41,15 +41,17 @@ TD3_DEFAULT_CONFIG = {
     "grad_norm_clip": 0,            # clipping coefficient for the norm of the gradients
 
     "exploration": {
-        "noise": None,              # exploration noise
+        "noise": None,              # exploration noise (see skrl.resources.noises)
+        "noise_kwargs": {},         # exploration noise's kwargs (e.g. {"std": 0.1})
         "initial_scale": 1.0,       # initial scale for the noise
         "final_scale": 1e-3,        # final scale for the noise
         "timesteps": None,          # timesteps for the noise decay
     },
 
-    "policy_delay": 2,                      # policy delay update with respect to critic update
-    "smooth_regularization_noise": None,    # smooth noise for regularization
-    "smooth_regularization_clip": 0.5,      # clip for smooth regularization
+    "policy_delay": 2,                         # policy delay update with respect to critic update
+    "smooth_regularization_noise": None,       # smooth noise for regularization (see skrl.resources.noises)
+    "smooth_regularization_noise_kwargs": {},  # smooth noise for regularization's kwargs (e.g. {"std": 0.1})
+    "smooth_regularization_clip": 0.5,         # clip for smooth regularization
 
     "rewards_shaper": None,         # rewards shaping function: Callable(reward, timestep, timesteps) -> reward
 
@@ -135,17 +137,6 @@ class TD3_RNN(Agent):
             if self.critic_2 is not None:
                 self.critic_2.broadcast_parameters()
 
-        if self.target_policy is not None and self.target_critic_1 is not None and self.target_critic_2 is not None:
-            # freeze target networks with respect to optimizers (update via .update_parameters())
-            self.target_policy.freeze_parameters(True)
-            self.target_critic_1.freeze_parameters(True)
-            self.target_critic_2.freeze_parameters(True)
-
-            # update target networks (hard update)
-            self.target_policy.update_parameters(self.policy, polyak=1)
-            self.target_critic_1.update_parameters(self.critic_1, polyak=1)
-            self.target_critic_2.update_parameters(self.critic_2, polyak=1)
-
         # configuration
         self._gradient_steps = self.cfg["gradient_steps"]
         self._batch_size = self.cfg["batch_size"]
@@ -175,12 +166,22 @@ class TD3_RNN(Agent):
 
         self._smooth_regularization_noise = self.cfg["smooth_regularization_noise"]
         self._smooth_regularization_clip = self.cfg["smooth_regularization_clip"]
-        if self._smooth_regularization_noise is None:
-            logger.warning("agents:TD3: No smooth regularization noise specified to reduce variance during training")
 
         self._rewards_shaper = self.cfg["rewards_shaper"]
 
         self._mixed_precision = self.cfg["mixed_precision"]
+
+        # set up noise
+        if self._exploration_noise is not None:
+            self._exploration_noise = self._exploration_noise(**self.cfg["exploration"]["noise_kwargs"])
+        else:
+            logger.warning("agents:TD3: No exploration noise specified, training performance may be degraded")
+        if self._smooth_regularization_noise is not None:
+            self._smooth_regularization_noise = self._smooth_regularization_noise(
+                **self.cfg["smooth_regularization_noise_kwargs"]
+            )
+        else:
+            logger.warning("agents:TD3: No smooth regularization noise specified, training variance may be high")
 
         # set up automatic mixed precision
         self._device_type = torch.device(device).type
@@ -205,6 +206,18 @@ class TD3_RNN(Agent):
 
             self.checkpoint_modules["policy_optimizer"] = self.policy_optimizer
             self.checkpoint_modules["critic_optimizer"] = self.critic_optimizer
+
+        # set up target networks
+        if self.target_policy is not None and self.target_critic_1 is not None and self.target_critic_2 is not None:
+            # freeze target networks with respect to optimizers (update via .update_parameters())
+            self.target_policy.freeze_parameters(True)
+            self.target_critic_1.freeze_parameters(True)
+            self.target_critic_2.freeze_parameters(True)
+
+            # update target networks (hard update)
+            self.target_policy.update_parameters(self.policy, polyak=1)
+            self.target_critic_1.update_parameters(self.critic_1, polyak=1)
+            self.target_critic_2.update_parameters(self.critic_2, polyak=1)
 
         # set up preprocessors
         # - observations

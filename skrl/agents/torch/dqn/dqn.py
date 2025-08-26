@@ -117,13 +117,6 @@ class DQN(Agent):
             if self.q_network is not None:
                 self.q_network.broadcast_parameters()
 
-        if self.target_q_network is not None:
-            # freeze target networks with respect to optimizers (update via .update_parameters())
-            self.target_q_network.freeze_parameters(True)
-
-            # update target networks (hard update)
-            self.target_q_network.update_parameters(self.q_network, polyak=1)
-
         # configuration
         self._gradient_steps = self.cfg["gradient_steps"]
         self._batch_size = self.cfg["batch_size"]
@@ -167,6 +160,14 @@ class DQN(Agent):
                 )
 
             self.checkpoint_modules["optimizer"] = self.optimizer
+
+        # set up target networks
+        if self.target_q_network is not None:
+            # freeze target networks with respect to optimizers (update via .update_parameters())
+            self.target_q_network.freeze_parameters(True)
+
+            # update target networks (hard update)
+            self.target_q_network.update_parameters(self.q_network, polyak=1)
 
         # set up preprocessors
         # - observations
