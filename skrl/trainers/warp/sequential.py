@@ -8,6 +8,7 @@ import tqdm
 from skrl.agents.warp import Agent
 from skrl.envs.wrappers.warp import Wrapper
 from skrl.trainers.warp import Trainer
+from skrl.utils import ScopedTimer
 
 
 # fmt: off

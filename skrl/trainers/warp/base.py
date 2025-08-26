@@ -265,12 +265,18 @@ class Trainer(ABC):
 
             with contextlib.nullcontext():
                 # compute actions
-                actions, outputs = self.agents.act(observations, states, timestep=timestep, timesteps=self.timesteps)
+                with ScopedTimer() as timer:
+                    actions, outputs = self.agents.act(
+                        observations, states, timestep=timestep, timesteps=self.timesteps
+                    )
+                    self.agents.track_data("Stats / Inference time (ms)", timer.elapsed_time_ms)
                 actions = actions if self.stochastic_evaluation else outputs.get("mean_actions", actions)
 
                 # step the environments
-                next_observations, rewards, terminated, truncated, infos = self.env.step(actions)
-                next_states = self.env.state()
+                with ScopedTimer() as timer:
+                    next_observations, rewards, terminated, truncated, infos = self.env.step(actions)
+                    next_states = self.env.state()
+                    self.agents.track_data("Stats / Env stepping time (ms)", timer.elapsed_time_ms)
 
                 # render the environments
                 if not self.headless:

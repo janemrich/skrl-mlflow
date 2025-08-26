@@ -77,9 +77,7 @@ class Agent(ABC):
         if not directory:
             directory = os.path.join(os.getcwd(), "runs")
         if not experiment_name:
-            experiment_name = "{}_{}".format(
-                datetime.datetime.now().strftime("%y-%m-%d_%H-%M-%S-%f"), self.__class__.__name__
-            )
+            experiment_name = f"{datetime.datetime.now().strftime('%y-%m-%d_%H-%M-%S-%f')}_{self.__class__.__name__}"
         self.experiment_dir = os.path.join(directory, experiment_name)
 
     def __str__(self) -> str:
