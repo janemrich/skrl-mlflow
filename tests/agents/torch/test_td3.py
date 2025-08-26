@@ -196,6 +196,8 @@ def test_agent(
             "timesteps": exploration_timesteps,
         },
         "policy_delay": policy_delay,
+        "smooth_regularization_noise": smooth_regularization_noise,
+        "smooth_regularization_noise_kwargs": {},
         "smooth_regularization_clip": smooth_regularization_clip,
         "rewards_shaper": rewards_shaper,
         "mixed_precision": get_test_mixed_precision(mixed_precision),
