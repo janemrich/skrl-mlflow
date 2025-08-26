@@ -34,7 +34,7 @@ from ...utilities import SingleAgentEnv, check_config_keys, get_test_mixed_preci
     random_timesteps=st.integers(min_value=0, max_value=5),
     learning_starts=st.integers(min_value=0, max_value=5),
     grad_norm_clip=st.floats(min_value=0, max_value=1),
-    exploration=st.one_of(st.none(), st.just(OrnsteinUhlenbeckNoise), st.just(GaussianNoise)),
+    exploration_noise=st.one_of(st.none(), st.just(OrnsteinUhlenbeckNoise), st.just(GaussianNoise)),
     exploration_initial_scale=st.floats(min_value=0, max_value=1),
     exploration_final_scale=st.floats(min_value=0, max_value=1),
     exploration_timesteps=st.one_of(st.none(), st.integers(min_value=1, max_value=50)),
@@ -67,7 +67,7 @@ def test_agent(
     random_timesteps,
     learning_starts,
     grad_norm_clip,
-    exploration,
+    exploration_noise,
     exploration_initial_scale,
     exploration_final_scale,
     exploration_timesteps,
@@ -167,6 +167,8 @@ def test_agent(
         "learning_starts": learning_starts,
         "grad_norm_clip": grad_norm_clip,
         "exploration": {
+            "noise": exploration_noise,
+            "noise_kwargs": {},
             "initial_scale": exploration_initial_scale,
             "final_scale": exploration_final_scale,
             "timesteps": exploration_timesteps,
@@ -188,12 +190,10 @@ def test_agent(
     ] = learning_rate_scheduler_kwargs_value
     # noise
     # - exploration
-    if exploration is None:
-        cfg["exploration"]["noise"] = None
-    elif exploration is OrnsteinUhlenbeckNoise:
-        cfg["exploration"]["noise"] = OrnsteinUhlenbeckNoise(theta=0.1, sigma=0.2, base_scale=1.0, device=env.device)
-    elif exploration is GaussianNoise:
-        cfg["exploration"]["noise"] = GaussianNoise(mean=0, std=0.1, device=env.device)
+    if exploration_noise is OrnsteinUhlenbeckNoise:
+        cfg["exploration"]["noise_kwargs"] = {"theta": 0.1, "sigma": 0.2, "base_scale": 1.0, "device": env.device}
+    elif exploration_noise is GaussianNoise:
+        cfg["exploration"]["noise_kwargs"] = {"mean": 0, "std": 0.1, "device": env.device}
     check_config_keys(cfg, DEFAULT_CONFIG)
     check_config_keys(cfg["experiment"], DEFAULT_CONFIG["experiment"])
     check_config_keys(cfg["exploration"], DEFAULT_CONFIG["exploration"])
