@@ -9,7 +9,7 @@ from skrl.agents.warp import Agent
 from skrl.memories.warp import Memory
 from skrl.models.warp import Model
 from skrl.resources.optimizers.warp import Adam
-from skrl.utils import Timer
+from skrl.utils import ScopedTimer
 
 
 # fmt: off
@@ -183,15 +183,6 @@ class SAC(Agent):
         self.checkpoint_modules["target_critic_1"] = self.target_critic_1
         self.checkpoint_modules["target_critic_2"] = self.target_critic_2
 
-        if self.target_critic_1 is not None and self.target_critic_2 is not None:
-            # freeze target networks with respect to optimizers (update via .update_parameters())
-            self.target_critic_1.freeze_parameters(True)
-            self.target_critic_2.freeze_parameters(True)
-
-            # update target networks (hard update)
-            self.target_critic_1.update_parameters(self.critic_1, polyak=1)
-            self.target_critic_2.update_parameters(self.critic_2, polyak=1)
-
         # configuration
         self._gradient_steps = self.cfg["gradient_steps"]
         self._batch_size = self.cfg["batch_size"]
@@ -251,6 +242,16 @@ class SAC(Agent):
 
             # self.checkpoint_modules["policy_optimizer"] = self.policy_optimizer
             # self.checkpoint_modules["critic_optimizer"] = self.critic_optimizer
+
+        # set up target networks
+        if self.target_critic_1 is not None and self.target_critic_2 is not None:
+            # freeze target networks with respect to optimizers (update via .update_parameters())
+            self.target_critic_1.freeze_parameters(True)
+            self.target_critic_2.freeze_parameters(True)
+
+            # update target networks (hard update)
+            self.target_critic_1.update_parameters(self.critic_1, polyak=1)
+            self.target_critic_2.update_parameters(self.critic_2, polyak=1)
 
             # training variables
             self._policy_loss = wp.zeros((1,), dtype=wp.float32, requires_grad=True)
@@ -404,7 +405,7 @@ class SAC(Agent):
         :param timesteps: Number of timesteps.
         """
         if timestep >= self._learning_starts:
-            with Timer() as timer:
+            with ScopedTimer() as timer:
                 self.enable_training_mode(True)
                 self.update(timestep=timestep, timesteps=timesteps)
                 self.enable_training_mode(False)

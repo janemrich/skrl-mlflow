@@ -5,11 +5,12 @@ import gymnasium
 import numpy as np
 import warp as wp
 
+from skrl import logger
 from skrl.agents.warp import Agent
 from skrl.memories.warp import Memory
 from skrl.models.warp import Model
 from skrl.resources.optimizers.warp import Adam
-from skrl.utils import Timer
+from skrl.utils import ScopedTimer
 
 
 # fmt: off
@@ -37,7 +38,8 @@ DDPG_DEFAULT_CONFIG = {
     "grad_norm_clip": 0,            # clipping coefficient for the norm of the gradients
 
     "exploration": {
-        "noise": None,              # exploration noise
+        "noise": None,              # exploration noise (see skrl.resources.noises)
+        "noise_kwargs": {},         # exploration noise's kwargs (e.g. {"std": 0.1})
         "initial_scale": 1.0,       # initial scale for the noise
         "final_scale": 1e-3,        # final scale for the noise
         "timesteps": None,          # timesteps for the noise decay
@@ -170,15 +172,6 @@ class DDPG(Agent):
         self.checkpoint_modules["critic"] = self.critic
         self.checkpoint_modules["target_critic"] = self.target_critic
 
-        if self.target_policy is not None and self.target_critic is not None:
-            # freeze target networks with respect to optimizers (update via .update_parameters())
-            self.target_policy.freeze_parameters(True)
-            self.target_critic.freeze_parameters(True)
-
-            # update target networks (hard update)
-            self.target_policy.update_parameters(self.policy, polyak=1)
-            self.target_critic.update_parameters(self.critic, polyak=1)
-
         # configuration
         self._gradient_steps = self.cfg["gradient_steps"]
         self._batch_size = self.cfg["batch_size"]
@@ -205,6 +198,12 @@ class DDPG(Agent):
 
         self._rewards_shaper = self.cfg["rewards_shaper"]
 
+        # set up noise
+        if self._exploration_noise is not None:
+            self._exploration_noise = self._exploration_noise(**self.cfg["exploration"]["noise_kwargs"])
+        else:
+            logger.warning("agents:DDPG: No exploration noise specified, training performance may be degraded")
+
         # set up optimizers and learning rate schedulers
         if self.policy is not None and self.critic is not None:
             self.policy_optimizer = Adam(self.policy.parameters(), lr=self._actor_learning_rate)
@@ -219,6 +218,16 @@ class DDPG(Agent):
 
             # self.checkpoint_modules["policy_optimizer"] = self.policy_optimizer
             # self.checkpoint_modules["critic_optimizer"] = self.critic_optimizer
+
+        # set up target networks
+        if self.target_policy is not None and self.target_critic is not None:
+            # freeze target networks with respect to optimizers (update via .update_parameters())
+            self.target_policy.freeze_parameters(True)
+            self.target_critic.freeze_parameters(True)
+
+            # update target networks (hard update)
+            self.target_policy.update_parameters(self.policy, polyak=1)
+            self.target_critic.update_parameters(self.critic, polyak=1)
 
             # training variables
             self._policy_loss = wp.zeros((1,), dtype=wp.float32, requires_grad=True)
@@ -410,7 +419,7 @@ class DDPG(Agent):
         :param timesteps: Number of timesteps.
         """
         if timestep >= self._learning_starts:
-            with Timer() as timer:
+            with ScopedTimer() as timer:
                 self.enable_training_mode(True)
                 self.update(timestep=timestep, timesteps=timesteps)
                 self.enable_training_mode(False)
