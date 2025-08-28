@@ -1,21 +1,55 @@
 from typing import Any, Mapping, Optional, Sequence, Tuple, Union
 
+import math
+
 import warp as wp
 
 from skrl import config
+from skrl.utils.framework.warp import ScopedCapture
 
 
-@wp.kernel(enable_backward=False)
-def _sum_squares(src: wp.array(ndim=1), dst: wp.array(ndim=1)):
-    wp.atomic_add(dst, 0, wp.pow(src[wp.tid()], 2.0))
+tiled = wp.constant(config.warp.tiled)
+tile_dim_0 = wp.constant(config.warp.tile_dim_0)
+block_dim = wp.constant(config.warp.block_dim)
 
 
-@wp.kernel(enable_backward=False)
-def _clip_by_total_norm(src: wp.array(ndim=1), sum_squares: wp.array(ndim=1), max_norm: float):
-    i = wp.tid()
-    norm = wp.sqrt(sum_squares[0])
-    if norm > max_norm:
-        src[i] = src[i] / norm * max_norm
+def create_clip_by_total_norm_kernels(max_norm: float):
+    @wp.func
+    def square(x: wp.float32) -> wp.float32:
+        return x * x
+
+    @wp.func
+    def clip_by_norm(x: wp.float32, sum_squares: wp.float32) -> wp.float32:
+        norm = wp.sqrt(sum_squares)
+        if norm > wp.static(max_norm):
+            return x / norm * wp.static(max_norm)
+        return x
+
+    @wp.kernel(enable_backward=False)
+    def sum_squares(src: wp.array(ndim=1), dst: wp.array(ndim=1)):
+        # tiled implementation
+        if wp.static(tiled):
+            tiled_src = wp.tile_load(src, shape=(tile_dim_0,), offset=(wp.tid() * tile_dim_0,))
+            wp.tile_atomic_add(dst, wp.tile_sum(wp.tile_map(square, tiled_src)))
+        # non-tiled implementation
+        else:
+            wp.atomic_add(dst, 0, square(src[wp.tid()]))
+
+    @wp.kernel(enable_backward=False)
+    def clip_by_total_norm(src: wp.array(ndim=1), sum_squares: wp.array(ndim=1)):
+        i = wp.tid()
+        # tiled implementation
+        if wp.static(tiled):
+            tiled_sum_squares = wp.tile_load(sum_squares, shape=(1,), offset=(0,))
+            tiled_src = wp.tile_load(src, shape=(tile_dim_0,), offset=(i * tile_dim_0,))
+            tiled_src = wp.tile_map(clip_by_norm, tiled_src, wp.tile_broadcast(tiled_sum_squares, shape=(tile_dim_0,)))
+            wp.tile_store(src, tiled_src, offset=(i * tile_dim_0,))
+        # non-tiled implementation
+        norm = wp.sqrt(sum_squares[0])
+        if norm > wp.static(max_norm):
+            src[i] = src[i] / norm * wp.static(max_norm)
+
+    return sum_squares, clip_by_total_norm
 
 
 @wp.kernel(enable_backward=False)
@@ -41,29 +75,6 @@ def _adam_step(
 @wp.kernel(enable_backward=False)
 def _increase_timestep(t: wp.array(ndim=1)):
     t[0] += 1
-
-
-def clip_by_total_norm(
-    gradients: Sequence[wp.array], max_norm: float, sum_squares: Optional[wp.array] = None
-) -> Sequence[wp.array]:
-    """Clip (scaling down) gradients' values in-place by their total norm.
-
-    https://arxiv.org/abs/1211.5063
-
-    :param gradients: Gradients to clip.
-    :param max_norm: Maximum global norm.
-    :param sum_squares: Pre-allocated array to store the sum of squares of the gradients for intermediate computation.
-        If not provided, a new array will be allocated for computation purposes.
-
-    :return: Clipped gradients.
-    """
-    if sum_squares is None:
-        sum_squares = wp.zeros((1,), dtype=wp.float32, device=gradients[0].device)
-    for gradient in gradients:
-        wp.launch(_sum_squares, dim=gradient.shape[0], inputs=[gradient], outputs=[sum_squares])
-    for gradient in gradients:
-        wp.launch(_clip_by_total_norm, dim=gradient.shape[0], inputs=[gradient, sum_squares, max_norm])
-    return gradients
 
 
 def adam_step(
@@ -126,10 +137,10 @@ class Adam:
         self._m1 = [wp.zeros_like(param) for param in self.params]
         self._m2 = [wp.zeros_like(param) for param in self.params]
 
-        self._graph_adam_step = None
-        self._graph_clip_by_total_norm = None
         self._use_graph = self.device.is_cuda
-        self._cached_sum_squares = wp.zeros((1,), dtype=wp.float32, device=self.device)
+        self._graph_clip_by_total_norm = None
+        self._graph_adam_step = None
+        self._max_norm = None
 
     def step(self, *, lr: Optional[float] = None) -> None:
         """Perform an optimization step to update parameters.
@@ -138,17 +149,12 @@ class Adam:
         """
         if lr is not None:
             self._lr.fill_(lr)
-        if self._use_graph:
-            if self._graph_adam_step is None:
-                with wp.ScopedCapture() as capture:
-                    adam_step(
-                        self.params, self.gradients, self._m1, self._m2, self._t, self._lr, self._betas, self._eps
-                    )
-                self._graph_adam_step = capture.graph
-            else:
-                wp.capture_launch(self._graph_adam_step)
+        if self._graph_adam_step is None:
+            with ScopedCapture(device=self.device, enabled=self._use_graph) as capture:
+                adam_step(self.params, self.gradients, self._m1, self._m2, self._t, self._lr, self._betas, self._eps)
+            self._graph_adam_step = capture.graph
         else:
-            adam_step(self.params, self.gradients, self._m1, self._m2, self._t, self._lr, self._betas, self._eps)
+            wp.capture_launch(self._graph_adam_step)
 
     def state_dict(self) -> Mapping[str, Any]:
         raise NotImplementedError
@@ -168,13 +174,33 @@ class Adam:
 
         :param max_norm: Maximum global norm.
         """
-        self._cached_sum_squares.zero_()
-        if self._use_graph:
-            if self._graph_clip_by_total_norm is None:
-                with wp.ScopedCapture() as capture:
-                    clip_by_total_norm(self.gradients, max_norm, self._cached_sum_squares)
-                self._graph_clip_by_total_norm = capture.graph
-            else:
-                wp.capture_launch(self._graph_clip_by_total_norm)
+        # create kernels if not already done or if `max_norm` has changed
+        if max_norm != self._max_norm:
+            self._max_norm = max_norm
+            self._graph_clip_by_total_norm = None
+            self._sum_squares = wp.zeros((1,), dtype=wp.float32, device=self.device)
+            self._sum_squares_kernel, self._clip_by_total_norm_kernel = create_clip_by_total_norm_kernels(max_norm)
+        # clip gradients
+        self._sum_squares.zero_()
+        if self._graph_clip_by_total_norm is None:
+            with ScopedCapture(device=self.device, enabled=self._use_graph) as capture:
+                for gradient in self.gradients:
+                    wp.launch(
+                        self._sum_squares_kernel,
+                        dim=[math.ceil(gradient.shape[0] / tile_dim_0), block_dim] if tiled else gradient.shape[0],
+                        inputs=[gradient],
+                        outputs=[self._sum_squares],
+                        device=self.device,
+                        block_dim=block_dim,
+                    )
+                for gradient in self.gradients:
+                    wp.launch(
+                        self._clip_by_total_norm_kernel,
+                        dim=[math.ceil(gradient.shape[0] / tile_dim_0), block_dim] if tiled else gradient.shape[0],
+                        inputs=[gradient, self._sum_squares],
+                        device=self.device,
+                        block_dim=block_dim,
+                    )
+            self._graph_clip_by_total_norm = capture.graph
         else:
-            clip_by_total_norm(self.gradients, max_norm, self._cached_sum_squares)
+            wp.capture_launch(self._graph_clip_by_total_norm)
