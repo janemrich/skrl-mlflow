@@ -45,17 +45,22 @@ def create_clip_by_total_norm_kernels(max_norm: float):
             tiled_gradients = wp.tile_map(clip_by_norm, tiled_gradients, tiled_sum_squares)
             wp.tile_store(gradients, tiled_gradients, offset=(i * tile_dim_0,))
         # non-tiled implementation
-        norm = wp.sqrt(sum_squares[0])
-        if norm > wp.static(max_norm):
-            gradients[i] = gradients[i] / norm * wp.static(max_norm)
+        else:
+            norm = wp.sqrt(sum_squares[0])
+            if norm > wp.static(max_norm):
+                gradients[i] = gradients[i] / norm * wp.static(max_norm)
 
     return sum_squares, clip_by_total_norm
 
 
 def create_adam_step_kernels(beta1: float, beta2: float, eps: float):
+    @wp.func
+    def hat_ratio(m1_hat: wp.float32, m2_hat: wp.float32) -> wp.float32:
+        return m1_hat / (wp.sqrt(m2_hat) + wp.static(eps))
+
     @wp.kernel(enable_backward=False)
     def increase_timestep(t: wp.array(ndim=1)):
-        t[0] += 1
+        t[0] += 1.0
 
     @wp.kernel(enable_backward=False)
     def adam_step(
@@ -63,15 +68,36 @@ def create_adam_step_kernels(beta1: float, beta2: float, eps: float):
         gradients: wp.array(ndim=1),
         m1: wp.array(ndim=1),
         m2: wp.array(ndim=1),
-        t: wp.array(ndim=1),
+        timestep: wp.array(ndim=1),
         lr: wp.array(ndim=1),
     ):
         i = wp.tid()
-        m1[i] = wp.static(beta1) * m1[i] + wp.static(1.0 - beta1) * gradients[i]
-        m2[i] = wp.static(beta2) * m2[i] + wp.static(1.0 - beta2) * gradients[i] * gradients[i]
-        m1_hat = m1[i] / (1.0 - wp.pow(wp.static(beta1), wp.float32(t[0])))
-        m2_hat = m2[i] / (1.0 - wp.pow(wp.static(beta2), wp.float32(t[0])))
-        parameters[i] = parameters[i] - lr[0] * m1_hat / (wp.sqrt(m2_hat) + wp.static(eps))
+        # tiled implementation
+        if wp.static(tiled):
+            tiled_parameters = wp.tile_load(parameters, shape=(tile_dim_0,), offset=(i * tile_dim_0,))
+            tiled_gradients = wp.tile_load(gradients, shape=(tile_dim_0,), offset=(i * tile_dim_0,))
+            tiled_m1 = wp.tile_load(m1, shape=(tile_dim_0,), offset=(i * tile_dim_0,))
+            tiled_m2 = wp.tile_load(m2, shape=(tile_dim_0,), offset=(i * tile_dim_0,))
+
+            tiled_m1 = wp.static(beta1) * tiled_m1 + wp.static(1.0 - beta1) * tiled_gradients
+            tiled_m2 = wp.static(beta2) * tiled_m2 + wp.static(1.0 - beta2) * wp.tile_map(
+                wp.mul, tiled_gradients, tiled_gradients
+            )
+            m1_hat = tiled_m1 * (1.0 / (1.0 - wp.pow(wp.static(beta1), timestep[0])))
+            m2_hat = tiled_m2 * (1.0 / (1.0 - wp.pow(wp.static(beta2), timestep[0])))
+
+            wp.tile_store(m1, tiled_m1, offset=(i * tile_dim_0,))
+            wp.tile_store(m2, tiled_m2, offset=(i * tile_dim_0,))
+            wp.tile_store(
+                parameters, tiled_parameters - lr[0] * wp.tile_map(hat_ratio, m1_hat, m2_hat), offset=(i * tile_dim_0,)
+            )
+        # non-tiled implementation
+        else:
+            m1[i] = wp.static(beta1) * m1[i] + wp.static(1.0 - beta1) * gradients[i]
+            m2[i] = wp.static(beta2) * m2[i] + wp.static(1.0 - beta2) * gradients[i] * gradients[i]
+            m1_hat = m1[i] / (1.0 - wp.pow(wp.static(beta1), timestep[0]))
+            m2_hat = m2[i] / (1.0 - wp.pow(wp.static(beta2), timestep[0]))
+            parameters[i] = parameters[i] - lr[0] * m1_hat / (wp.sqrt(m2_hat) + wp.static(eps))
 
     return increase_timestep, adam_step
 
@@ -101,10 +127,10 @@ class Adam:
 
         self._betas = betas
         self._eps = eps
-        self._m1 = [wp.zeros_like(param) for param in self.parameters]
-        self._m2 = [wp.zeros_like(param) for param in self.parameters]
+        self._m1 = [wp.zeros_like(param, requires_grad=False) for param in self.parameters]
+        self._m2 = [wp.zeros_like(param, requires_grad=False) for param in self.parameters]
         self._lr = wp.array([lr], dtype=wp.float32, device=self.device)
-        self._timestep = wp.zeros((1,), dtype=wp.int32, device=self.device)
+        self._timestep = wp.zeros((1,), dtype=wp.float32, device=self.device)
 
         self._use_graph = self.device.is_cuda
         self._graph_clip_by_total_norm = None
@@ -135,7 +161,7 @@ class Adam:
                 for parameters, gradients, m1, m2 in zip(self.parameters, self.gradients, self._m1, self._m2):
                     wp.launch(
                         self._adam_step_kernel,
-                        dim=parameters.shape[0],
+                        dim=[math.ceil(parameters.shape[0] / tile_dim_0), block_dim] if tiled else parameters.shape[0],
                         inputs=[parameters, gradients, m1, m2, self._timestep, self._lr],
                         device=self.device,
                         block_dim=block_dim,
