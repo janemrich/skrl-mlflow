@@ -179,11 +179,6 @@ class Adam:
     def clip_by_total_norm(self, max_norm: float):
         """Clip (scaling down) parameters' gradients in-place by their total norm.
 
-        .. note::
-
-            This method captures, and launches, the computation done by the ``clip_by_total_norm`` function
-            on a CUDA graph for performance reasons.
-
         https://arxiv.org/abs/1211.5063
 
         :param max_norm: Maximum global norm.
