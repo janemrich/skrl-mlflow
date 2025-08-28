@@ -26,91 +26,60 @@ def create_clip_by_total_norm_kernels(max_norm: float):
         return x
 
     @wp.kernel(enable_backward=False)
-    def sum_squares(src: wp.array(ndim=1), dst: wp.array(ndim=1)):
+    def sum_squares(gradients: wp.array(ndim=1), sum_squares: wp.array(ndim=1)):
         # tiled implementation
         if wp.static(tiled):
-            tiled_src = wp.tile_load(src, shape=(tile_dim_0,), offset=(wp.tid() * tile_dim_0,))
-            wp.tile_atomic_add(dst, wp.tile_sum(wp.tile_map(square, tiled_src)))
+            tiled_gradients = wp.tile_load(gradients, shape=(tile_dim_0,), offset=(wp.tid() * tile_dim_0,))
+            wp.tile_atomic_add(sum_squares, wp.tile_sum(wp.tile_map(square, tiled_gradients)))
         # non-tiled implementation
         else:
-            wp.atomic_add(dst, 0, square(src[wp.tid()]))
+            wp.atomic_add(sum_squares, 0, square(gradients[wp.tid()]))
 
     @wp.kernel(enable_backward=False)
-    def clip_by_total_norm(src: wp.array(ndim=1), sum_squares: wp.array(ndim=1)):
+    def clip_by_total_norm(gradients: wp.array(ndim=1), sum_squares: wp.array(ndim=1)):
         i = wp.tid()
         # tiled implementation
         if wp.static(tiled):
-            tiled_sum_squares = wp.tile_load(sum_squares, shape=(1,), offset=(0,))
-            tiled_src = wp.tile_load(src, shape=(tile_dim_0,), offset=(i * tile_dim_0,))
-            tiled_src = wp.tile_map(clip_by_norm, tiled_src, wp.tile_broadcast(tiled_sum_squares, shape=(tile_dim_0,)))
-            wp.tile_store(src, tiled_src, offset=(i * tile_dim_0,))
+            tiled_sum_squares = wp.tile_broadcast(wp.tile_load(sum_squares, shape=(1,)), shape=(tile_dim_0,))
+            tiled_gradients = wp.tile_load(gradients, shape=(tile_dim_0,), offset=(i * tile_dim_0,))
+            tiled_gradients = wp.tile_map(clip_by_norm, tiled_gradients, tiled_sum_squares)
+            wp.tile_store(gradients, tiled_gradients, offset=(i * tile_dim_0,))
         # non-tiled implementation
         norm = wp.sqrt(sum_squares[0])
         if norm > wp.static(max_norm):
-            src[i] = src[i] / norm * wp.static(max_norm)
+            gradients[i] = gradients[i] / norm * wp.static(max_norm)
 
     return sum_squares, clip_by_total_norm
 
 
-@wp.kernel(enable_backward=False)
-def _adam_step(
-    param: wp.array(ndim=1),
-    grad: wp.array(ndim=1),
-    m1: wp.array(ndim=1),
-    m2: wp.array(ndim=1),
-    t: wp.array(ndim=1),
-    lr: wp.array(ndim=1),
-    beta1: float,
-    beta2: float,
-    eps: float,
-):
-    i = wp.tid()
-    m1[i] = beta1 * m1[i] + (1.0 - beta1) * grad[i]
-    m2[i] = beta2 * m2[i] + (1.0 - beta2) * grad[i] * grad[i]
-    m1_hat = m1[i] / (1.0 - wp.pow(beta1, wp.float32(t[0])))
-    m2_hat = m2[i] / (1.0 - wp.pow(beta2, wp.float32(t[0])))
-    param[i] = param[i] - lr[0] * m1_hat / (wp.sqrt(m2_hat) + eps)
+def create_adam_step_kernels(beta1: float, beta2: float, eps: float):
+    @wp.kernel(enable_backward=False)
+    def increase_timestep(t: wp.array(ndim=1)):
+        t[0] += 1
 
+    @wp.kernel(enable_backward=False)
+    def adam_step(
+        parameters: wp.array(ndim=1),
+        gradients: wp.array(ndim=1),
+        m1: wp.array(ndim=1),
+        m2: wp.array(ndim=1),
+        t: wp.array(ndim=1),
+        lr: wp.array(ndim=1),
+    ):
+        i = wp.tid()
+        m1[i] = wp.static(beta1) * m1[i] + wp.static(1.0 - beta1) * gradients[i]
+        m2[i] = wp.static(beta2) * m2[i] + wp.static(1.0 - beta2) * gradients[i] * gradients[i]
+        m1_hat = m1[i] / (1.0 - wp.pow(wp.static(beta1), wp.float32(t[0])))
+        m2_hat = m2[i] / (1.0 - wp.pow(wp.static(beta2), wp.float32(t[0])))
+        parameters[i] = parameters[i] - lr[0] * m1_hat / (wp.sqrt(m2_hat) + wp.static(eps))
 
-@wp.kernel(enable_backward=False)
-def _increase_timestep(t: wp.array(ndim=1)):
-    t[0] += 1
-
-
-def adam_step(
-    params: Sequence[wp.array],
-    gradients: Sequence[wp.array],
-    m1: Sequence[wp.array],
-    m2: Sequence[wp.array],
-    t: wp.array,
-    lr: wp.array,
-    betas: Tuple[float, float],
-    eps: float,
-) -> None:
-    """Perform an optimization step to update parameters.
-
-    :param params: Parameters.
-    :param gradients: Gradients.
-    :param m1: First moment of the parameters.
-    :param m2: Second moment of the parameters.
-    :param t: Timestep.
-    :param lr: Learning rate.
-    :param betas: Beta coefficients.
-    :param eps: Term added to the denominator to improve numerical stability.
-    """
-    wp.launch(_increase_timestep, dim=1, inputs=[t])
-    for i in range(len(params)):
-        wp.launch(
-            _adam_step,
-            dim=params[i].shape[0],
-            inputs=[params[i], gradients[i], m1[i], m2[i], t, lr, betas[0], betas[1], eps],
-        )
+    return increase_timestep, adam_step
 
 
 class Adam:
     def __init__(
         self,
-        params: Sequence[wp.array],
+        parameters: Sequence[wp.array],
         lr: float = 1e-3,
         betas: Tuple[float, float] = (0.9, 0.999),
         eps: float = 1e-08,
@@ -121,37 +90,56 @@ class Adam:
         Adapted from Warp implementation of `warp.optim.Adam <https://nvidia.github.io/warp>`_
         to support CUDA graphs, gradient clipping and state dict.
 
-        :param params: Model parameters.
+        :param parameters: Model parameters.
         :param lr: Learning rate.
         :param betas: Coefficients for the running averages of the gradient and its square.
         :param eps: Term added to the denominator to improve numerical stability.
         """
         self.device = config.warp.parse_device(device)
-        self.params = [param.flatten() for param in params]
-        self.gradients = [param.grad.flatten() for param in self.params]
+        self.parameters = [param.flatten() for param in parameters]
+        self.gradients = [param.grad.flatten() for param in self.parameters]
 
         self._betas = betas
         self._eps = eps
-        self._t = wp.zeros((1,), dtype=wp.int32, device=self.device)
+        self._m1 = [wp.zeros_like(param) for param in self.parameters]
+        self._m2 = [wp.zeros_like(param) for param in self.parameters]
         self._lr = wp.array([lr], dtype=wp.float32, device=self.device)
-        self._m1 = [wp.zeros_like(param) for param in self.params]
-        self._m2 = [wp.zeros_like(param) for param in self.params]
+        self._timestep = wp.zeros((1,), dtype=wp.int32, device=self.device)
 
         self._use_graph = self.device.is_cuda
         self._graph_clip_by_total_norm = None
         self._graph_adam_step = None
         self._max_norm = None
 
+        self._sum_squares_kernel, self._clip_by_total_norm_kernel = None, None
+        self._increase_timestep_kernel, self._adam_step_kernel = create_adam_step_kernels(*self._betas, self._eps)
+
     def step(self, *, lr: Optional[float] = None) -> None:
         """Perform an optimization step to update parameters.
 
         :param lr: Learning rate.
         """
+        # update learning rate
         if lr is not None:
             self._lr.fill_(lr)
+        # perform optimization step
         if self._graph_adam_step is None:
             with ScopedCapture(device=self.device, enabled=self._use_graph) as capture:
-                adam_step(self.params, self.gradients, self._m1, self._m2, self._t, self._lr, self._betas, self._eps)
+                wp.launch(
+                    self._increase_timestep_kernel,
+                    dim=1,
+                    inputs=[self._timestep],
+                    device=self.device,
+                    block_dim=block_dim,
+                )
+                for parameters, gradients, m1, m2 in zip(self.parameters, self.gradients, self._m1, self._m2):
+                    wp.launch(
+                        self._adam_step_kernel,
+                        dim=parameters.shape[0],
+                        inputs=[parameters, gradients, m1, m2, self._timestep, self._lr],
+                        device=self.device,
+                        block_dim=block_dim,
+                    )
             self._graph_adam_step = capture.graph
         else:
             wp.capture_launch(self._graph_adam_step)
