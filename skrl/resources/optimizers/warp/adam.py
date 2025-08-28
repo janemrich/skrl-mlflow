@@ -15,10 +15,6 @@ block_dim = wp.constant(config.warp.block_dim)
 
 def create_clip_by_total_norm_kernels(max_norm: float):
     @wp.func
-    def square(x: wp.float32) -> wp.float32:
-        return x * x
-
-    @wp.func
     def clip_by_norm(x: wp.float32, sum_squares: wp.float32) -> wp.float32:
         norm = wp.sqrt(sum_squares)
         if norm > wp.static(max_norm):
@@ -27,13 +23,14 @@ def create_clip_by_total_norm_kernels(max_norm: float):
 
     @wp.kernel(enable_backward=False)
     def sum_squares(gradients: wp.array(ndim=1), sum_squares: wp.array(ndim=1)):
+        i = wp.tid()
         # tiled implementation
         if wp.static(tiled):
-            tiled_gradients = wp.tile_load(gradients, shape=(tile_dim_0,), offset=(wp.tid() * tile_dim_0,))
-            wp.tile_atomic_add(sum_squares, wp.tile_sum(wp.tile_map(square, tiled_gradients)))
+            tiled_gradients = wp.tile_load(gradients, shape=(tile_dim_0,), offset=(i * tile_dim_0,))
+            wp.tile_atomic_add(sum_squares, wp.tile_sum(wp.tile_map(wp.mul, tiled_gradients, tiled_gradients)))
         # non-tiled implementation
         else:
-            wp.atomic_add(sum_squares, 0, square(gradients[wp.tid()]))
+            wp.atomic_add(sum_squares, 0, gradients[i] * gradients[i])
 
     @wp.kernel(enable_backward=False)
     def clip_by_total_norm(gradients: wp.array(ndim=1), sum_squares: wp.array(ndim=1)):
