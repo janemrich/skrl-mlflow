@@ -1,16 +1,12 @@
+import argparse
+import os
 import gymnasium as gym
 
 import flax.linen as nn
-import jax
 import jax.numpy as jnp
 
-
-jax.config.update("jax_compilation_cache_dir", "/tmp/jax_cache")
-jax.config.update("jax_persistent_cache_min_entry_size_bytes", -1)
-jax.config.update("jax_persistent_cache_min_compile_time_secs", 0)
-
 # import the skrl components to build the RL system
-from skrl import config
+from skrl import config, logger
 from skrl.agents.jax.ppo import PPO, PPO_DEFAULT_CONFIG
 from skrl.envs.wrappers.jax import wrap_env
 from skrl.memories.jax import RandomMemory
@@ -21,11 +17,21 @@ from skrl.trainers.jax import SequentialTrainer
 from skrl.utils import set_seed
 
 
-config.jax.backend = "jax"  # or "jax"
+config.jax.backend = "numpy"  # or "jax"
+
+
+# parse arguments
+parser = argparse.ArgumentParser()
+parser.add_argument("--num_envs", type=int, default=1, help="Number of environments")
+parser.add_argument("--headless", action="store_true", help="Run in headless mode (no rendering)")
+parser.add_argument("--seed", type=int, default=None, help="Random seed")
+parser.add_argument("--checkpoint", type=str, default=None, help="Load checkpoint from path")
+parser.add_argument("--eval", action="store_true", help="Run in evaluation mode (logging/checkpointing disabled)")
+args, _ = parser.parse_known_args()
 
 
 # seed for reproducibility
-set_seed()  # e.g. `set_seed(42)` for fixed seed
+set_seed(args.seed)  # e.g. `set_seed(42)` for fixed seed
 
 
 # define models (stochastic and deterministic models) using mixins
@@ -62,12 +68,12 @@ class Policy(GaussianMixin, Model):
 
     @nn.compact  # marks the given module method allowing inlined submodules
     def __call__(self, inputs, role):
-        x = nn.relu(nn.Dense(32)(inputs["observations"]))
-        x = nn.relu(nn.Dense(32)(x))
+        x = nn.relu(nn.Dense(64)(inputs["observations"]))
+        x = nn.relu(nn.Dense(64)(x))
         x = nn.Dense(self.num_actions)(x)
         log_std = self.param("log_std", lambda _: jnp.zeros(self.num_actions))
         # Pendulum-v1 action_space is -2 to 2
-        return 2 * nn.tanh(x), {"log_std": log_std}
+        return 2.0 * nn.tanh(x), {"log_std": log_std}
 
 
 class Value(DeterministicMixin, Model):
@@ -84,20 +90,21 @@ class Value(DeterministicMixin, Model):
 
     @nn.compact  # marks the given module method allowing inlined submodules
     def __call__(self, inputs, role):
-        x = nn.relu(nn.Dense(32)(inputs["observations"]))
-        x = nn.relu(nn.Dense(32)(x))
+        x = nn.relu(nn.Dense(64)(inputs["observations"]))
+        x = nn.relu(nn.Dense(64)(x))
         x = nn.Dense(1)(x)
         return x, {}
 
 
-# load and wrap the gymnasium environment.
-# note: the environment version may change depending on the gymnasium version
-try:
-    env = gym.make_vec("Pendulum-v1", num_envs=4, vectorization_mode="sync")
-except (gym.error.DeprecatedEnv, gym.error.VersionNotFound) as e:
-    env_id = [spec for spec in gym.envs.registry if spec.startswith("Pendulum-v")][0]
-    print("Pendulum-v1 not found. Trying {}".format(env_id))
-    env = gym.make_vec(env_id, num_envs=4, vectorization_mode="sync")
+# load the environment (note: the environment version may change depending on the gymnasium version)
+task_name = "Pendulum"
+render_mode = "human" if not args.headless else None
+env_id = [spec for spec in gym.envs.registry if spec.startswith(f"{task_name}-v")][-1]  # get latest environment version
+if args.num_envs <= 1:
+    env = gym.make(env_id, render_mode=render_mode)
+else:
+    env = gym.make_vec(env_id, num_envs=args.num_envs, render_mode=render_mode, vectorization_mode="sync")
+# wrap the environment
 env = wrap_env(env)
 
 device = env.device
@@ -142,9 +149,9 @@ cfg["observation_preprocessor_kwargs"] = {"size": env.observation_space, "device
 cfg["value_preprocessor"] = RunningStandardScaler
 cfg["value_preprocessor_kwargs"] = {"size": 1, "device": device}
 # logging to TensorBoard and write checkpoints (in timesteps)
-cfg["experiment"]["write_interval"] = "auto"
-cfg["experiment"]["checkpoint_interval"] = "auto"
-cfg["experiment"]["directory"] = "runs/jax/Pendulum"
+cfg["experiment"]["write_interval"] = "auto" if not args.eval else 0
+cfg["experiment"]["checkpoint_interval"] = "auto" if not args.eval else 0
+cfg["experiment"]["directory"] = f"runs/jax/{task_name}"
 
 agent = PPO(
     models=models,
@@ -158,8 +165,13 @@ agent = PPO(
 
 
 # configure and instantiate the RL trainer
-cfg_trainer = {"timesteps": 100000, "headless": True}
-trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=[agent])
+cfg_trainer = {"timesteps": 100000, "headless": args.headless}
+trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
 
-# start training
-trainer.train()
+if args.checkpoint:
+    if not os.path.exists(args.checkpoint):
+        logger.error(f"Checkpoint file not found: '{args.checkpoint}'")
+        exit(1)
+    agent.load(args.checkpoint)
+
+trainer.train() if not args.eval else trainer.eval()
