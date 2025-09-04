@@ -497,7 +497,7 @@ class MultiAgent(ABC):
             self.write_tracking_data(timestep=timestep, timesteps=timesteps)
 
     @abstractmethod
-    def update(self, *, timestep: int, timesteps: int) -> None:
+    def update(self, *, timestep: int, timesteps: int, uid: str) -> None:
         """Algorithm's main update step.
 
         .. warning::
@@ -507,5 +507,6 @@ class MultiAgent(ABC):
 
         :param timestep: Current timestep.
         :param timesteps: Number of timesteps.
+        :param uid: Agent ID.
         """
         pass

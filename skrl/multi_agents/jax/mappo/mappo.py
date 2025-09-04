@@ -13,6 +13,7 @@ from skrl.models.jax import Model
 from skrl.multi_agents.jax import MultiAgent
 from skrl.resources.optimizers.jax import Adam
 from skrl.resources.schedulers.jax import KLAdaptiveLR
+from skrl.utils import ScopedTimer
 
 
 # fmt: off
@@ -525,159 +526,162 @@ class MAPPO(MultiAgent):
         """
         self._rollout += 1
         if not self._rollout % self._rollouts and timestep >= self._learning_starts:
-            self.enable_models_training_mode(True)
-            self.update(timestep=timestep, timesteps=timesteps)
-            self.enable_models_training_mode(False)
+            with ScopedTimer() as timer:
+                self.enable_models_training_mode(True)
+                for uid in self.possible_agents:
+                    self.update(timestep=timestep, timesteps=timesteps, uid=uid)
+                self.enable_models_training_mode(False)
+                self.track_data("Stats / Algorithm update time (ms)", timer.elapsed_time_ms)
 
         # write tracking data and checkpoints
         super().post_interaction(timestep=timestep, timesteps=timesteps)
 
-    def update(self, *, timestep: int, timesteps: int) -> None:
+    def update(self, *, timestep: int, timesteps: int, uid: str) -> None:
         """Algorithm's main update step.
 
         :param timestep: Current timestep.
         :param timesteps: Number of timesteps.
+        :param uid: Agent ID.
         """
-        for uid in self.possible_agents:
-            policy = self.policies[uid]
-            value = self.values[uid]
-            memory = self.memories[uid]
+        policy = self.policies[uid]
+        value = self.values[uid]
+        memory = self.memories[uid]
 
-            # compute returns and advantages
-            inputs = {
-                "observations": self._observation_preprocessor[uid](self._current_next_observations[uid]),
-                "states": self._state_preprocessor[uid](self._current_next_states[uid]),
-            }
-            value.enable_training_mode(False)
-            last_values, _ = value.act(inputs, role="value")
-            value.enable_training_mode(True)
-            if not self._jax:  # numpy backend
-                last_values = jax.device_get(last_values)
-            last_values = self._value_preprocessor[uid](last_values, inverse=True)
+        # compute returns and advantages
+        inputs = {
+            "observations": self._observation_preprocessor[uid](self._current_next_observations[uid]),
+            "states": self._state_preprocessor[uid](self._current_next_states[uid]),
+        }
+        value.enable_training_mode(False)
+        last_values, _ = value.act(inputs, role="value")
+        value.enable_training_mode(True)
+        if not self._jax:  # numpy backend
+            last_values = jax.device_get(last_values)
+        last_values = self._value_preprocessor[uid](last_values, inverse=True)
 
-            values = memory.get_tensor_by_name("values")
-            returns, advantages = (_compute_gae if self._jax else compute_gae)(
-                rewards=memory.get_tensor_by_name("rewards"),
-                dones=memory.get_tensor_by_name("terminated") | memory.get_tensor_by_name("truncated"),
-                values=values,
-                next_values=last_values,
-                discount_factor=self._discount_factor[uid],
-                lambda_coefficient=self._lambda[uid],
-            )
+        values = memory.get_tensor_by_name("values")
+        returns, advantages = (_compute_gae if self._jax else compute_gae)(
+            rewards=memory.get_tensor_by_name("rewards"),
+            dones=memory.get_tensor_by_name("terminated") | memory.get_tensor_by_name("truncated"),
+            values=values,
+            next_values=last_values,
+            discount_factor=self._discount_factor[uid],
+            lambda_coefficient=self._lambda[uid],
+        )
 
-            memory.set_tensor_by_name("values", self._value_preprocessor[uid](values, train=True))
-            memory.set_tensor_by_name("returns", self._value_preprocessor[uid](returns, train=True))
-            memory.set_tensor_by_name("advantages", advantages)
+        memory.set_tensor_by_name("values", self._value_preprocessor[uid](values, train=True))
+        memory.set_tensor_by_name("returns", self._value_preprocessor[uid](returns, train=True))
+        memory.set_tensor_by_name("advantages", advantages)
 
-            # sample mini-batches from memory
-            sampled_batches = memory.sample_all(names=self._tensors_names, mini_batches=self._mini_batches[uid])
+        # sample mini-batches from memory
+        sampled_batches = memory.sample_all(names=self._tensors_names, mini_batches=self._mini_batches[uid])
 
-            cumulative_policy_loss = 0
-            cumulative_entropy_loss = 0
-            cumulative_value_loss = 0
+        cumulative_policy_loss = 0
+        cumulative_entropy_loss = 0
+        cumulative_value_loss = 0
 
-            # learning epochs
-            for epoch in range(self._learning_epochs[uid]):
-                kl_divergences = []
+        # learning epochs
+        for epoch in range(self._learning_epochs[uid]):
+            kl_divergences = []
 
-                # mini-batches loop
-                for (
-                    sampled_observations,
-                    sampled_states,
-                    sampled_actions,
+            # mini-batches loop
+            for (
+                sampled_observations,
+                sampled_states,
+                sampled_actions,
+                sampled_log_prob,
+                sampled_values,
+                sampled_returns,
+                sampled_advantages,
+            ) in sampled_batches:
+
+                inputs = {
+                    "observations": self._observation_preprocessor[uid](sampled_observations, train=not epoch),
+                    "states": self._state_preprocessor[uid](sampled_states, train=not epoch),
+                }
+
+                # compute policy loss
+                grad, policy_loss, entropy_loss, kl_divergence, stddev = _update_policy(
+                    policy.act,
+                    policy.state_dict,
+                    {**inputs, "taken_actions": sampled_actions},
                     sampled_log_prob,
-                    sampled_values,
-                    sampled_returns,
                     sampled_advantages,
-                ) in sampled_batches:
-
-                    inputs = {
-                        "observations": self._observation_preprocessor[uid](sampled_observations, train=not epoch),
-                        "states": self._state_preprocessor[uid](sampled_states, train=not epoch),
-                    }
-
-                    # compute policy loss
-                    grad, policy_loss, entropy_loss, kl_divergence, stddev = _update_policy(
-                        policy.act,
-                        policy.state_dict,
-                        {**inputs, "taken_actions": sampled_actions},
-                        sampled_log_prob,
-                        sampled_advantages,
-                        self._ratio_clip[uid],
-                        policy.get_entropy,
-                        self._entropy_loss_scale[uid],
-                    )
-
-                    kl_divergences.append(kl_divergence.item())
-
-                    # early stopping with KL divergence
-                    if self._kl_threshold[uid] and kl_divergence > self._kl_threshold[uid]:
-                        break
-
-                    # optimization step (policy)
-                    if config.jax.is_distributed:
-                        grad = policy.reduce_parameters(grad)
-                    self.policy_optimizer[uid] = self.policy_optimizer[uid].step(
-                        grad=grad,
-                        model=policy,
-                        lr=self._learning_rate[uid] if self._learning_rate_scheduler[uid] else None,
-                    )
-
-                    # compute value loss
-                    grad, value_loss = _update_value(
-                        value.act,
-                        value.state_dict,
-                        inputs,
-                        sampled_values,
-                        sampled_returns,
-                        self._value_loss_scale[uid],
-                        self._clip_predicted_values[uid],
-                        self._value_clip[uid],
-                    )
-
-                    # optimization step (value)
-                    if config.jax.is_distributed:
-                        grad = value.reduce_parameters(grad)
-                    self.value_optimizer[uid] = self.value_optimizer[uid].step(
-                        grad=grad,
-                        model=value,
-                        lr=self._learning_rate[uid] if self._learning_rate_scheduler[uid] else None,
-                    )
-
-                    # update cumulative losses
-                    cumulative_policy_loss += policy_loss.item()
-                    cumulative_value_loss += value_loss.item()
-                    if self._entropy_loss_scale[uid]:
-                        cumulative_entropy_loss += entropy_loss.item()
-
-                # update learning rate
-                if self._learning_rate_scheduler[uid]:
-                    if self._learning_rate_scheduler[uid] is KLAdaptiveLR:
-                        kl = np.mean(kl_divergences)
-                        # reduce (collect from all workers/processes) KL in distributed runs
-                        if config.jax.is_distributed:
-                            kl = jax.pmap(lambda x: jax.lax.psum(x, "i"), axis_name="i")(kl.reshape(1)).item()
-                            kl /= config.jax.world_size
-                        self._learning_rate[uid] = self.schedulers[uid](timestep, lr=self._learning_rate[uid], kl=kl)
-                    else:
-                        self._learning_rate[uid] *= self.schedulers[uid](timestep)
-
-            # record data
-            self.track_data(
-                f"Loss / Policy loss ({uid})",
-                cumulative_policy_loss / (self._learning_epochs[uid] * self._mini_batches[uid]),
-            )
-            self.track_data(
-                f"Loss / Value loss ({uid})",
-                cumulative_value_loss / (self._learning_epochs[uid] * self._mini_batches[uid]),
-            )
-            if self._entropy_loss_scale:
-                self.track_data(
-                    f"Loss / Entropy loss ({uid})",
-                    cumulative_entropy_loss / (self._learning_epochs[uid] * self._mini_batches[uid]),
+                    self._ratio_clip[uid],
+                    policy.get_entropy,
+                    self._entropy_loss_scale[uid],
                 )
 
-            self.track_data(f"Policy / Standard deviation ({uid})", stddev.mean().item())
+                kl_divergences.append(kl_divergence.item())
 
+                # early stopping with KL divergence
+                if self._kl_threshold[uid] and kl_divergence > self._kl_threshold[uid]:
+                    break
+
+                # optimization step (policy)
+                if config.jax.is_distributed:
+                    grad = policy.reduce_parameters(grad)
+                self.policy_optimizer[uid] = self.policy_optimizer[uid].step(
+                    grad=grad,
+                    model=policy,
+                    lr=self._learning_rate[uid] if self._learning_rate_scheduler[uid] else None,
+                )
+
+                # compute value loss
+                grad, value_loss = _update_value(
+                    value.act,
+                    value.state_dict,
+                    inputs,
+                    sampled_values,
+                    sampled_returns,
+                    self._value_loss_scale[uid],
+                    self._clip_predicted_values[uid],
+                    self._value_clip[uid],
+                )
+
+                # optimization step (value)
+                if config.jax.is_distributed:
+                    grad = value.reduce_parameters(grad)
+                self.value_optimizer[uid] = self.value_optimizer[uid].step(
+                    grad=grad,
+                    model=value,
+                    lr=self._learning_rate[uid] if self._learning_rate_scheduler[uid] else None,
+                )
+
+                # update cumulative losses
+                cumulative_policy_loss += policy_loss.item()
+                cumulative_value_loss += value_loss.item()
+                if self._entropy_loss_scale[uid]:
+                    cumulative_entropy_loss += entropy_loss.item()
+
+            # update learning rate
             if self._learning_rate_scheduler[uid]:
-                self.track_data(f"Learning / Learning rate ({uid})", self._learning_rate[uid])
+                if self._learning_rate_scheduler[uid] is KLAdaptiveLR:
+                    kl = np.mean(kl_divergences)
+                    # reduce (collect from all workers/processes) KL in distributed runs
+                    if config.jax.is_distributed:
+                        kl = jax.pmap(lambda x: jax.lax.psum(x, "i"), axis_name="i")(kl.reshape(1)).item()
+                        kl /= config.jax.world_size
+                    self._learning_rate[uid] = self.schedulers[uid](timestep, lr=self._learning_rate[uid], kl=kl)
+                else:
+                    self._learning_rate[uid] *= self.schedulers[uid](timestep)
+
+        # record data
+        self.track_data(
+            f"Loss / Policy loss ({uid})",
+            cumulative_policy_loss / (self._learning_epochs[uid] * self._mini_batches[uid]),
+        )
+        self.track_data(
+            f"Loss / Value loss ({uid})",
+            cumulative_value_loss / (self._learning_epochs[uid] * self._mini_batches[uid]),
+        )
+        if self._entropy_loss_scale:
+            self.track_data(
+                f"Loss / Entropy loss ({uid})",
+                cumulative_entropy_loss / (self._learning_epochs[uid] * self._mini_batches[uid]),
+            )
+
+        self.track_data(f"Policy / Standard deviation ({uid})", stddev.mean().item())
+
+        if self._learning_rate_scheduler[uid]:
+            self.track_data(f"Learning / Learning rate ({uid})", self._learning_rate[uid])

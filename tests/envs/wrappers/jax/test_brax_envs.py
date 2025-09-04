@@ -65,7 +65,8 @@ def test_env(capsys: pytest.CaptureFixture, backend: str):
             observation, reward, terminated, truncated, info = env.step(action)
             state = env.state()
             try:
-                env.render()
+                if not is_running_on_github_actions():
+                    env.render()
             except (AttributeError, mujoco.FatalError) as e:
                 warnings.warn(f"Brax exception when rendering: {e}")
             assert isinstance(observation, Array) and observation.shape == (num_envs, 4)
