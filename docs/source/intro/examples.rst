@@ -444,10 +444,10 @@ These examples perform the training of one agent in a DeepMind environment (**on
               - Script
               - Checkpoint (Hugging Face)
             * - Control: Cartpole SwingUp
-              - :download:`dm_suite_cartpole_swingup_ddpg.py <../../../examples/deepmind/dm_suite_cartpole_swingup_ddpg.py>`
+              - :download:`torch_dm_cartpole_swingup_ddpg.py <../../../examples/deepmind/torch_dm_cartpole_swingup_ddpg.py>`
               -
             * - Manipulation: Reach Site Vision
-              - :download:`dm_manipulation_stack_sac.py <../../../examples/deepmind/dm_manipulation_stack_sac.py>`
+              - :download:`torch_dm_manipulation_stack_sac.py <../../../examples/deepmind/torch_dm_manipulation_stack_sac.py>`
               -
 
 .. raw:: html

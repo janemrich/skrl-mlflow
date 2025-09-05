@@ -1,33 +1,59 @@
+import argparse
+import os
 from dm_control import manipulation
 
 import torch
 import torch.nn as nn
 
+# import the skrl components to build the RL system
+from skrl import logger
 from skrl.agents.torch.sac import SAC, SAC_DEFAULT_CONFIG
-from skrl.envs.torch import wrap_env
+from skrl.envs.wrappers.torch import wrap_env
 from skrl.memories.torch import RandomMemory
-
-# Import the skrl components to build the RL system
 from skrl.models.torch import DeterministicMixin, GaussianMixin, Model
 from skrl.trainers.torch import SequentialTrainer
+from skrl.utils import set_seed
+from skrl.utils.spaces.torch import unflatten_tensorized_space
 
 
-# Define the models (stochastic and deterministic models) for the SAC agent using the mixins.
-# - StochasticActor (policy): takes as input the environment's observation/state and returns an action
-# - Critic: takes the state and action as input and provides a value to guide the policy
-class StochasticActor(GaussianMixin, Model):
+# parse arguments
+parser = argparse.ArgumentParser()
+parser.add_argument("--headless", action="store_true", help="Run in headless mode (no rendering)")
+parser.add_argument("--seed", type=int, default=None, help="Random seed")
+parser.add_argument("--checkpoint", type=str, default=None, help="Load checkpoint from path")
+parser.add_argument("--eval", action="store_true", help="Run in evaluation mode (logging/checkpointing disabled)")
+args, _ = parser.parse_known_args()
+
+
+# seed for reproducibility
+set_seed(args.seed)  # e.g. `set_seed(42)` for fixed seed
+
+
+# define models (stochastic and deterministic models) using mixins
+class Actor(GaussianMixin, Model):
     def __init__(
         self,
         observation_space,
+        state_space,
         action_space,
         device,
         clip_actions=False,
         clip_log_std=True,
         min_log_std=-20,
         max_log_std=2,
+        reduction="sum",
     ):
-        Model.__init__(self, observation_space, action_space, device)
-        GaussianMixin.__init__(self, clip_actions, clip_log_std, min_log_std, max_log_std)
+        Model.__init__(
+            self, observation_space=observation_space, state_space=state_space, action_space=action_space, device=device
+        )
+        GaussianMixin.__init__(
+            self,
+            clip_actions=clip_actions,
+            clip_log_std=clip_log_std,
+            min_log_std=min_log_std,
+            max_log_std=max_log_std,
+            reduction=reduction,
+        )
 
         self.features_extractor = nn.Sequential(
             nn.Conv2d(3, 32, kernel_size=8, stride=3),
@@ -44,14 +70,16 @@ class StochasticActor(GaussianMixin, Model):
         )
 
         self.net = nn.Sequential(
-            nn.Linear(26, 32), nn.ReLU(), nn.Linear(32, 32), nn.ReLU(), nn.Linear(32, self.num_actions)
+            nn.Linear(26, 32),
+            nn.ReLU(),
+            nn.Linear(32, 32),
+            nn.ReLU(),
+            nn.Linear(32, self.num_actions),
         )
 
         self.log_std_parameter = nn.Parameter(torch.zeros(self.num_actions))
 
     def compute(self, inputs, role):
-        states = inputs["states"]
-
         # The dm_control.manipulation tasks have as observation/state spec a `collections.OrderedDict` object as follows:
         # OrderedDict([('front_close', BoundedArray(shape=(1, 84, 84, 3), dtype=dtype('uint8'), name='front_close', minimum=0, maximum=255)),
         #              ('jaco_arm/joints_pos', Array(shape=(1, 6, 2), dtype=dtype('float64'), name='jaco_arm/joints_pos')),
@@ -75,7 +103,8 @@ class StochasticActor(GaussianMixin, Model):
         # The `spaces` parameter is a flat tensor of the flattened observation/state space with shape (batch_size, size_of_flat_space).
         # Using the model's method `tensor_to_space` we can convert the flattened tensor to the original space.
         # https://skrl.readthedocs.io/en/latest/modules/skrl.models.base_class.html#skrl.models.torch.base.Model.tensor_to_space
-        space = self.tensor_to_space(states, self.observation_space)
+        batch_size = inputs.get("observations").shape[0]
+        observations = unflatten_tensorized_space(self.observation_space, inputs.get("observations"))
 
         # For this case, the `space` variable is a Python dictionary with the following structure and shapes:
         # {'front_close': torch.Tensor(shape=[batch_size, 1, 84, 84, 3], dtype=torch.float32),
@@ -88,28 +117,30 @@ class StochasticActor(GaussianMixin, Model):
         #  'jaco_arm/joints_vel': torch.Tensor(shape=[batch_size, 1, 6], dtype=torch.float32)}
 
         # permute and normalize the images (samples, width, height, channels) -> (samples, channels, width, height)
-        features = self.features_extractor(space["front_close"][:, 0].permute(0, 3, 1, 2) / 255.0)
+        features = self.features_extractor(observations["front_close"][:, 0].permute(0, 3, 1, 2) / 255.0)
 
         mean_actions = torch.tanh(
             self.net(
                 torch.cat(
                     [
                         features,
-                        space["jaco_arm/joints_pos"].view(states.shape[0], -1),
-                        space["jaco_arm/joints_vel"].view(states.shape[0], -1),
+                        observations["jaco_arm/joints_pos"].view(batch_size, -1),
+                        observations["jaco_arm/joints_vel"].view(batch_size, -1),
                     ],
                     dim=-1,
                 )
             )
         )
 
-        return mean_actions, self.log_std_parameter, {}
+        return mean_actions, {"log_std": self.log_std_parameter}
 
 
 class Critic(DeterministicMixin, Model):
-    def __init__(self, observation_space, action_space, device, clip_actions=False):
-        Model.__init__(self, observation_space, action_space, device)
-        DeterministicMixin.__init__(self, clip_actions)
+    def __init__(self, observation_space, state_space, action_space, device):
+        Model.__init__(
+            self, observation_space=observation_space, state_space=state_space, action_space=action_space, device=device
+        )
+        DeterministicMixin.__init__(self)
 
         self.features_extractor = nn.Sequential(
             nn.Conv2d(3, 32, kernel_size=8, stride=3),
@@ -126,88 +157,96 @@ class Critic(DeterministicMixin, Model):
         )
 
         self.net = nn.Sequential(
-            nn.Linear(26 + self.num_actions, 32), nn.ReLU(), nn.Linear(32, 32), nn.ReLU(), nn.Linear(32, 1)
+            nn.Linear(26 + self.num_actions, 32),
+            nn.ReLU(),
+            nn.Linear(32, 32),
+            nn.ReLU(),
+            nn.Linear(32, 1),
         )
 
     def compute(self, inputs, role):
-        states = inputs["states"]
-
         # map the observations/states to the original space.
         # See the explanation above (StochasticActor.compute)
-        space = self.tensor_to_space(states, self.observation_space)
+        batch_size = inputs.get("observations").shape[0]
+        observations = unflatten_tensorized_space(self.observation_space, inputs.get("observations"))
 
         # permute and normalize the images (samples, width, height, channels) -> (samples, channels, width, height)
-        features = self.features_extractor(space["front_close"][:, 0].permute(0, 3, 1, 2) / 255.0)
+        features = self.features_extractor(observations["front_close"][:, 0].permute(0, 3, 1, 2) / 255.0)
 
-        return (
-            self.net(
-                torch.cat(
-                    [
-                        features,
-                        space["jaco_arm/joints_pos"].view(states.shape[0], -1),
-                        space["jaco_arm/joints_vel"].view(states.shape[0], -1),
-                        inputs["taken_actions"],
-                    ],
-                    dim=-1,
-                )
-            ),
-            {},
+        x = self.net(
+            torch.cat(
+                [
+                    features,
+                    observations["jaco_arm/joints_pos"].view(batch_size, -1),
+                    observations["jaco_arm/joints_vel"].view(batch_size, -1),
+                    inputs["taken_actions"],
+                ],
+                dim=-1,
+            )
         )
+        return x, {}
 
 
-# Load and wrap the DeepMind environment
-env = manipulation.load("reach_site_vision")
+# load the environment
+task_name = "reach_site_vision"
+env = manipulation.load(task_name)
+# wrap the environment
 env = wrap_env(env)
 
 device = env.device
 
 
-# Instantiate a RandomMemory (without replacement) as experience replay memory
+# instantiate a memory as experience replay
 memory = RandomMemory(memory_size=50000, num_envs=env.num_envs, device=device, replacement=False)
 
 
-# Instantiate the agent's models (function approximators).
+# instantiate the agent's models (function approximators).
 # SAC requires 5 models, visit its documentation for more details
-# https://skrl.readthedocs.io/en/latest/modules/skrl.agents.sac.html#spaces-and-models
-models_sac = {}
-models_sac["policy"] = StochasticActor(env.observation_space, env.action_space, device, clip_actions=True)
-models_sac["critic_1"] = Critic(env.observation_space, env.action_space, device)
-models_sac["critic_2"] = Critic(env.observation_space, env.action_space, device)
-models_sac["target_critic_1"] = Critic(env.observation_space, env.action_space, device)
-models_sac["target_critic_2"] = Critic(env.observation_space, env.action_space, device)
+# https://skrl.readthedocs.io/en/latest/api/agents/sac.html#models
+models = {}
+models["policy"] = Actor(env.observation_space, env.state_space, env.action_space, device)
+models["critic_1"] = Critic(env.observation_space, env.state_space, env.action_space, device)
+models["critic_2"] = Critic(env.observation_space, env.state_space, env.action_space, device)
+models["target_critic_1"] = Critic(env.observation_space, env.state_space, env.action_space, device)
+models["target_critic_2"] = Critic(env.observation_space, env.state_space, env.action_space, device)
 
-# Initialize the models' parameters (weights and biases) using a Gaussian distribution
-for model in models_sac.values():
+# initialize models' parameters (weights and biases)
+for model in models.values():
     model.init_parameters(method_name="normal_", mean=0.0, std=0.1)
 
 
-# Configure and instantiate the agent.
-# Only modify some of the default configuration, visit its documentation to see all the options
-# https://skrl.readthedocs.io/en/latest/modules/skrl.agents.sac.html#configuration-and-hyperparameters
-cfg_sac = SAC_DEFAULT_CONFIG.copy()
-cfg_sac["gradient_steps"] = 1
-cfg_sac["batch_size"] = 256
-cfg_sac["random_timesteps"] = 0
-cfg_sac["learning_starts"] = 10000
-cfg_sac["learn_entropy"] = True
-# logging to TensorBoard and write checkpoints each 1000 and 5000 timesteps respectively
-cfg_sac["experiment"]["write_interval"] = 1000
-cfg_sac["experiment"]["checkpoint_interval"] = 5000
+# configure and instantiate the agent (visit its documentation to see all the options)
+# https://skrl.readthedocs.io/en/latest/api/agents/sac.html#configuration-and-hyperparameters
+cfg = SAC_DEFAULT_CONFIG.copy()
+cfg["gradient_steps"] = 1
+cfg["batch_size"] = 256
+cfg["random_timesteps"] = 0
+cfg["learning_starts"] = 1000
+cfg["learn_entropy"] = True
+# logging to TensorBoard and write checkpoints (in timesteps)
+cfg["experiment"]["write_interval"] = "auto" if not args.eval else 0
+cfg["experiment"]["checkpoint_interval"] = "auto" if not args.eval else 0
+cfg["experiment"]["directory"] = f"runs/torch/{task_name}"
 
-
-agent_sac = SAC(
-    models=models_sac,
+agent = SAC(
+    models=models,
     memory=memory,
-    cfg=cfg_sac,
+    cfg=cfg,
     observation_space=env.observation_space,
+    state_space=env.state_space,
     action_space=env.action_space,
     device=device,
 )
 
 
-# Configure and instantiate the RL trainer
-cfg_trainer = {"timesteps": 100000, "headless": True}
-trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent_sac)
+# configure and instantiate the RL trainer
+cfg_trainer = {"timesteps": 100000, "headless": args.headless}
+trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
 
-# start training
-trainer.train()
+if args.checkpoint:
+    if not os.path.exists(args.checkpoint):
+        logger.error(f"Checkpoint file not found: '{args.checkpoint}'")
+        exit(1)
+    agent.load(args.checkpoint)
+
+trainer.train() if not args.eval else trainer.eval()

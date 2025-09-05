@@ -78,7 +78,7 @@ device = env.device
 
 
 # instantiate a memory as experience replay
-memory = RandomMemory(memory_size=25000, device=device, replacement=False)
+memory = RandomMemory(memory_size=25000, num_envs=env.num_envs, device=device, replacement=False)
 
 
 # instantiate the agent's models (function approximators).
