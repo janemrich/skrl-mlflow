@@ -92,6 +92,7 @@ class BraxWrapper(Wrapper):
     def render(self, *args, **kwargs) -> None:
         """Render the environment."""
         frame = self._env.render(mode="rgb_array")
+        frame = frame[0] if frame.ndim == 4 else frame
 
         # render the frame using OpenCV
         try:
@@ -105,5 +106,7 @@ class BraxWrapper(Wrapper):
 
     def close(self) -> None:
         """Close the environment."""
-        # TODO: check self._env.close() raises AttributeError: 'VectorGymWrapper' object has no attribute 'closed'
-        pass
+        try:
+            self._env.close()
+        except AttributeError:  # 'VectorGymWrapper' object has no attribute 'closed'
+            pass
