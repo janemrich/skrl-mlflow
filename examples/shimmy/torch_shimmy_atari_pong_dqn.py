@@ -1,9 +1,12 @@
+import argparse
+import os
+import ale_py  # needed to re-register the correct environment entry_point (requires: `pip install ale-py`)
 import gymnasium as gym
 
-import torch
 import torch.nn as nn
 
 # import the skrl components to build the RL system
+from skrl import logger
 from skrl.agents.torch.dqn import DQN, DQN_DEFAULT_CONFIG
 from skrl.envs.wrappers.torch import wrap_env
 from skrl.memories.torch import RandomMemory
@@ -12,15 +15,31 @@ from skrl.trainers.torch import SequentialTrainer
 from skrl.utils import set_seed
 
 
+# parse arguments
+parser = argparse.ArgumentParser()
+parser.add_argument("--num_envs", type=int, default=1, help="Number of environments")
+parser.add_argument("--headless", action="store_true", help="Run in headless mode (no rendering)")
+parser.add_argument("--seed", type=int, default=None, help="Random seed")
+parser.add_argument("--checkpoint", type=str, default=None, help="Load checkpoint from path")
+parser.add_argument("--eval", action="store_true", help="Run in evaluation mode (logging/checkpointing disabled)")
+args, _ = parser.parse_known_args()
+
+
 # seed for reproducibility
-set_seed()  # e.g. `set_seed(42)` for fixed seed
+set_seed(args.seed)  # e.g. `set_seed(42)` for fixed seed
 
 
 # define model (deterministic model) using mixin
 class QNetwork(DeterministicMixin, Model):
-    def __init__(self, observation_space, action_space, device, clip_actions=False):
-        Model.__init__(self, observation_space, action_space, device)
-        DeterministicMixin.__init__(self, clip_actions)
+    def __init__(self, observation_space, state_space, action_space, device, clip_actions=False):
+        Model.__init__(
+            self,
+            observation_space=observation_space,
+            state_space=state_space,
+            action_space=action_space,
+            device=device,
+        )
+        DeterministicMixin.__init__(self, clip_actions=clip_actions)
 
         self.net = nn.Sequential(
             nn.Linear(self.num_observations, 64),
@@ -31,11 +50,19 @@ class QNetwork(DeterministicMixin, Model):
         )
 
     def compute(self, inputs, role):
-        return self.net(inputs["states"]), {}
+        return self.net(inputs["observations"]), {}
 
 
-# load and wrap the environment
-env = gym.make("ALE/Pong-v5")
+# load the environment (note: the environment version may change depending on the ale-py version)
+gym.register_envs(ale_py)  # unnecessary but prevents IDEs from complaining
+task_name = "ALE/Pong"
+render_mode = "human" if not args.headless else None
+env_id = [spec for spec in gym.envs.registry if spec.startswith(f"{task_name}-v")][-1]  # get latest environment version
+if args.num_envs <= 1:
+    env = gym.make(env_id, render_mode=render_mode)
+else:
+    env = gym.make_vec(env_id, num_envs=args.num_envs, render_mode=render_mode, vectorization_mode="sync")
+# wrap the environment
 env = wrap_env(env)
 
 device = env.device
@@ -49,8 +76,8 @@ memory = RandomMemory(memory_size=15000, num_envs=env.num_envs, device=device, r
 # DQN requires 2 models, visit its documentation for more details
 # https://skrl.readthedocs.io/en/latest/api/agents/dqn.html#models
 models = {}
-models["q_network"] = QNetwork(env.observation_space, env.action_space, device)
-models["target_q_network"] = QNetwork(env.observation_space, env.action_space, device)
+models["q_network"] = QNetwork(env.observation_space, env.state_space, env.action_space, device)
+models["target_q_network"] = QNetwork(env.observation_space, env.state_space, env.action_space, device)
 
 # initialize models' parameters (weights and biases)
 for model in models.values():
@@ -61,27 +88,32 @@ for model in models.values():
 # https://skrl.readthedocs.io/en/latest/api/agents/dqn.html#configuration-and-hyperparameters
 cfg = DQN_DEFAULT_CONFIG.copy()
 cfg["learning_starts"] = 100
-cfg["exploration"]["initial_epsilon"] = 1.0
 cfg["exploration"]["final_epsilon"] = 0.04
 cfg["exploration"]["timesteps"] = 1500
 # logging to TensorBoard and write checkpoints (in timesteps)
-cfg["experiment"]["write_interval"] = 1000
-cfg["experiment"]["checkpoint_interval"] = 5000
-cfg["experiment"]["directory"] = "runs/torch/ALE_Pong"
+cfg["experiment"]["write_interval"] = "auto" if not args.eval else 0
+cfg["experiment"]["checkpoint_interval"] = "auto" if not args.eval else 0
+cfg["experiment"]["directory"] = f"runs/torch/{task_name.replace('/', '-')}"
 
 agent = DQN(
     models=models,
     memory=memory,
     cfg=cfg,
     observation_space=env.observation_space,
+    state_space=env.state_space,
     action_space=env.action_space,
     device=device,
 )
 
 
 # configure and instantiate the RL trainer
-cfg_trainer = {"timesteps": 50000, "headless": True}
-trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=[agent])
+cfg_trainer = {"timesteps": 50000, "headless": args.headless}
+trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
 
-# start training
-trainer.train()
+if args.checkpoint:
+    if not os.path.exists(args.checkpoint):
+        logger.error(f"Checkpoint file not found: '{args.checkpoint}'")
+        exit(1)
+    agent.load(args.checkpoint)
+
+trainer.train() if not args.eval else trainer.eval()
