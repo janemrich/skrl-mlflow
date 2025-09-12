@@ -40,6 +40,7 @@ def _print_cfg(d, indent=0) -> None:
 
 
 def load_omniverse_isaacgym_env(
+    *,
     task_name: str = "",
     num_envs: Optional[int] = None,
     headless: Optional[bool] = None,
