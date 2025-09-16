@@ -147,7 +147,7 @@ class Runner:
         """
         _direct_eval = [
             "learning_rate_scheduler",
-            "shared_state_preprocessor",
+            "observation_preprocessor",
             "state_preprocessor",
             "value_preprocessor",
             "amp_state_preprocessor",
@@ -180,7 +180,7 @@ class Runner:
     def _generate_models(
         self, env: Union[Wrapper, MultiAgentEnvWrapper], cfg: Mapping[str, Any]
     ) -> Mapping[str, Mapping[str, Model]]:
-        """Generate model instances according to the environment specification and the given config
+        """Generate model instances according to the environment specification and the given config.
 
         :param env: Wrapped environment.
         :param cfg: A configuration dictionary.
@@ -283,8 +283,8 @@ class Runner:
         device = env.device
         num_envs = env.num_envs
         possible_agents = env.possible_agents if multi_agent else ["agent"]
-        state_spaces = env.state_spaces if multi_agent else {"agent": env.state_space}
         observation_spaces = env.observation_spaces if multi_agent else {"agent": env.observation_space}
+        state_spaces = env.state_spaces if multi_agent else {"agent": env.state_space}
         action_spaces = env.action_spaces if multi_agent else {"agent": env.action_space}
 
         agent_class = cfg.get("agent", {}).get("class", "").lower()
@@ -316,9 +316,10 @@ class Runner:
             agent_id = possible_agents[0]
             agent_cfg = self._component(f"{agent_class}_DEFAULT_CONFIG").copy()
             agent_cfg.update(self._process_cfg(cfg["agent"]))
-            agent_cfg.get("state_preprocessor_kwargs", {}).update(
+            agent_cfg.get("observation_preprocessor_kwargs", {}).update(
                 {"size": observation_spaces[agent_id], "device": device}
             )
+            agent_cfg.get("state_preprocessor_kwargs", {}).update({"size": state_spaces[agent_id], "device": device})
             agent_cfg.get("value_preprocessor_kwargs", {}).update({"size": 1, "device": device})
             if agent_cfg.get("exploration", {}).get("noise", None):
                 agent_cfg["exploration"].get("noise_kwargs", {}).update({"device": device})
@@ -328,30 +329,17 @@ class Runner:
                 "models": models[agent_id],
                 "memory": memories[agent_id],
                 "observation_space": observation_spaces[agent_id],
+                "state_space": state_spaces[agent_id],
                 "action_space": action_spaces[agent_id],
             }
         # multi-agent configuration and instantiation
-        elif agent_class in ["ippo"]:
+        elif agent_class in ["ippo", "mappo"]:
             agent_cfg = self._component(f"{agent_class}_DEFAULT_CONFIG").copy()
             agent_cfg.update(self._process_cfg(cfg["agent"]))
-            agent_cfg["state_preprocessor_kwargs"].update(
+            agent_cfg["observation_preprocessor_kwargs"].update(
                 {agent_id: {"size": observation_spaces[agent_id], "device": device} for agent_id in possible_agents}
             )
-            agent_cfg["value_preprocessor_kwargs"].update({"size": 1, "device": device})
-            agent_kwargs = {
-                "models": models,
-                "memories": memories,
-                "observation_spaces": observation_spaces,
-                "action_spaces": action_spaces,
-                "possible_agents": possible_agents,
-            }
-        elif agent_class in ["mappo"]:
-            agent_cfg = self._component(f"{agent_class}_DEFAULT_CONFIG").copy()
-            agent_cfg.update(self._process_cfg(cfg["agent"]))
             agent_cfg["state_preprocessor_kwargs"].update(
-                {agent_id: {"size": observation_spaces[agent_id], "device": device} for agent_id in possible_agents}
-            )
-            agent_cfg["shared_state_preprocessor_kwargs"].update(
                 {agent_id: {"size": state_spaces[agent_id], "device": device} for agent_id in possible_agents}
             )
             agent_cfg["value_preprocessor_kwargs"].update({"size": 1, "device": device})
@@ -359,8 +347,8 @@ class Runner:
                 "models": models,
                 "memories": memories,
                 "observation_spaces": observation_spaces,
+                "state_spaces": state_spaces,
                 "action_spaces": action_spaces,
-                "shared_observation_spaces": state_spaces,
                 "possible_agents": possible_agents,
             }
         return self._component(agent_class)(cfg=agent_cfg, device=device, **agent_kwargs)
