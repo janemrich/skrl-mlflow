@@ -159,7 +159,7 @@ class Runner:
             def reward_shaper(rewards, *args, **kwargs):
                 return rewards * scale
 
-            return reward_shaper
+            return None if scale is None or scale == 1.0 else reward_shaper
 
         def update_dict(d):
             for key, value in d.items():
