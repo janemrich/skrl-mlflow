@@ -143,7 +143,7 @@ class SequentialTrainer(Trainer):
                     for k, v in infos[self.environment_info].items():
                         if isinstance(v, torch.Tensor) and v.numel() == 1:
                             for agent in self.agents:
-                                agent.track_data(f"Info / {k}", v.item())
+                                agent.track_data(k if "/" in k else f"Info / {k}", v.item())
 
             # post-interaction
             for agent in self.agents:
@@ -243,7 +243,7 @@ class SequentialTrainer(Trainer):
                     for k, v in infos[self.environment_info].items():
                         if isinstance(v, torch.Tensor) and v.numel() == 1:
                             for agent in self.agents:
-                                agent.track_data(f"Info / {k}", v.item())
+                                agent.track_data(k if "/" in k else f"Info / {k}", v.item())
 
             # post-interaction
             for agent in self.agents:
