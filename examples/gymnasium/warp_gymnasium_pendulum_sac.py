@@ -1,17 +1,14 @@
+import argparse
+import os
 import gymnasium as gym
 
 import warp as wp
 
-
-wp.config.verbose = True
-wp.config.verbose_warnings = True
-# wp.config.verify_autograd_array_access = True
-
-
 import skrl.models.warp.nn as nn
 
 # import the skrl components to build the RL system
-from skrl.agents.warp.sac import SAC, SAC_DEFAULT_CONFIG
+from skrl import logger
+from skrl.agents.warp.sac import SAC, SAC_CFG
 from skrl.envs.wrappers.warp import wrap_env
 from skrl.memories.warp import RandomMemory
 from skrl.models.warp import DeterministicMixin, GaussianMixin, Model
@@ -20,8 +17,18 @@ from skrl.utils import set_seed
 from skrl.utils.framework.warp import concatenate, scalar_mul
 
 
+# parse arguments
+parser = argparse.ArgumentParser()
+parser.add_argument("--num_envs", type=int, default=1, help="Number of environments")
+parser.add_argument("--headless", action="store_true", help="Run in headless mode (no rendering)")
+parser.add_argument("--seed", type=int, default=None, help="Random seed")
+parser.add_argument("--checkpoint", type=str, default=None, help="Load checkpoint from path")
+parser.add_argument("--eval", action="store_true", help="Run in evaluation mode (logging/checkpointing disabled)")
+args, _ = parser.parse_known_args()
+
+
 # seed for reproducibility
-set_seed()  # e.g. `set_seed(42)` for fixed seed
+set_seed(args.seed)  # e.g. `set_seed(42)` for fixed seed
 
 
 # define models (stochastic and deterministic models) using mixins
@@ -51,19 +58,19 @@ class Actor(GaussianMixin, Model):
         )
 
         self.net = nn.Sequential(
-            nn.Linear(self.num_observations, 32),
+            nn.Linear(self.num_observations, 400),
             nn.ReLU(),
-            nn.Linear(32, 32),
+            nn.Linear(400, 300),
             nn.ReLU(),
-            nn.Linear(32, self.num_actions),
+            nn.Linear(300, self.num_actions),
             nn.Tanh(),
         )
         self.log_std_parameter = nn.Parameter(wp.zeros(self.num_actions))
         self.__post_init__()
 
     def compute(self, inputs, role):
-        # Pendulum-v1 action_space is -2 to 2
         x = self.net(inputs["observations"])
+        # Pendulum-v1 action_space is -2 to 2
         return scalar_mul(x, 2.0), {"log_std": self.log_std_parameter.data}
 
 
@@ -75,11 +82,11 @@ class Critic(DeterministicMixin, Model):
         DeterministicMixin.__init__(self)
 
         self.net = nn.Sequential(
-            nn.Linear(self.num_observations + self.num_actions, 32),
+            nn.Linear(self.num_observations + self.num_actions, 400),
             nn.ReLU(),
-            nn.Linear(32, 32),
+            nn.Linear(400, 300),
             nn.ReLU(),
-            nn.Linear(32, 1),
+            nn.Linear(300, 1),
         )
         self.__post_init__()
 
@@ -88,14 +95,15 @@ class Critic(DeterministicMixin, Model):
         return x, {}
 
 
-# load and wrap the gymnasium environment.
-# note: the environment version may change depending on the gymnasium version
-try:
-    env = gym.make("Pendulum-v1")
-except (gym.error.DeprecatedEnv, gym.error.VersionNotFound) as e:
-    env_id = [spec for spec in gym.envs.registry if spec.startswith("Pendulum-v")][0]
-    print("Pendulum-v1 not found. Trying {}".format(env_id))
-    env = gym.make(env_id)
+# load the environment (note: the environment version may change depending on the gymnasium version)
+task_name = "Pendulum"
+render_mode = "human" if not args.headless else None
+env_id = [spec for spec in gym.envs.registry if spec.startswith(f"{task_name}-v")][-1]  # get latest environment version
+if args.num_envs <= 1:
+    env = gym.make(env_id, render_mode=render_mode)
+else:
+    env = gym.make_vec(env_id, num_envs=args.num_envs, render_mode=render_mode, vectorization_mode="sync")
+# wrap the environment
 env = wrap_env(env)
 
 device = env.device
@@ -122,15 +130,15 @@ models["target_critic_2"] = Critic(env.observation_space, env.state_space, env.a
 
 # configure and instantiate the agent (visit its documentation to see all the options)
 # https://skrl.readthedocs.io/en/latest/api/agents/sac.html#configuration-and-hyperparameters
-cfg = SAC_DEFAULT_CONFIG.copy()
-cfg["batch_size"] = 100
-cfg["random_timesteps"] = 100
-cfg["learning_starts"] = 100
-cfg["learn_entropy"] = True
+cfg = SAC_CFG()
+cfg.batch_size = 100
+cfg.random_timesteps = 100
+cfg.learning_starts = 100
+cfg.learn_entropy = True
 # logging to TensorBoard and write checkpoints (in timesteps)
-cfg["experiment"]["write_interval"] = "auto"
-cfg["experiment"]["checkpoint_interval"] = "auto"
-cfg["experiment"]["directory"] = "runs/warp/Pendulum"
+cfg.experiment.write_interval = "auto" if not args.eval else 0
+cfg.experiment.checkpoint_interval = "auto" if not args.eval else 0
+cfg.experiment.directory = f"runs/warp/{task_name}"
 
 agent = SAC(
     models=models,
@@ -144,8 +152,13 @@ agent = SAC(
 
 
 # configure and instantiate the RL trainer
-cfg_trainer = {"timesteps": 15000, "headless": True}
-trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=[agent])
+cfg_trainer = {"timesteps": 15000, "headless": args.headless}
+trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=agent)
 
-# start training
-trainer.train()
+if args.checkpoint:
+    if not os.path.exists(args.checkpoint):
+        logger.error(f"Checkpoint file not found: '{args.checkpoint}'")
+        exit(1)
+    agent.load(args.checkpoint)
+
+trainer.train() if not args.eval else trainer.eval()
