@@ -21,6 +21,7 @@ def _inverse_2d(
     dst[i, j] = wp.sqrt(running_variance[j]) * wp.clamp(src[i, j], -clip_threshold, clip_threshold) + running_mean[j]
 
 
+@wp.kernel(enable_backward=False)
 def _inverse_3d(
     src: wp.array(ndim=3),
     running_mean: wp.array(ndim=1),
@@ -159,8 +160,16 @@ class RunningStandardScaler:
         }
 
     def load_state_dict(self, state_dict: Mapping[str, wp.array]) -> None:
-        wp.copy(self.running_mean, state_dict["running_mean"])
-        wp.copy(self.running_variance, state_dict["running_variance"])
+        def _load_from_array(dst, src):
+            if isinstance(src, wp.array):
+                wp.copy(dst, src.to(dst.device))
+            elif isinstance(src, np.ndarray):
+                wp.copy(dst, wp.array(src, dtype=dst.dtype, device=dst.device))
+            else:
+                raise NotImplementedError(f"Unsupported type: {type(src)}")
+
+        _load_from_array(self.running_mean, state_dict["running_mean"])
+        _load_from_array(self.running_variance, state_dict["running_variance"])
         self.current_count = float(state_dict["current_count"])
 
     def __call__(
