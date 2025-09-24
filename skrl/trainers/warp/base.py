@@ -2,6 +2,7 @@ from typing import List, Optional, Union
 
 import atexit
 import contextlib
+import dataclasses
 import sys
 from abc import ABC
 import tqdm
@@ -32,43 +33,66 @@ def generate_equally_spaced_scopes(*, num_envs: int, num_simultaneous_agents: in
     return scopes
 
 
+@dataclasses.dataclass(kw_only=True)
+class TrainerCfg(ABC):
+    """Base class for the trainer's configuration."""
+
+    timesteps: int = 100000
+    """Number of timesteps to train/evaluate for."""
+
+    headless: bool = False
+    """Whether to run in headless mode (do not call ``env.render()``)."""
+
+    disable_progressbar: bool | None = False
+    """Whether to disable the progressbar. If None, disable on non-TTY."""
+
+    close_environment_at_exit: bool = True
+    """Whether to close the environment on normal program termination."""
+
+    environment_info: str = "episode"
+    """Key used to get and log environment info."""
+
+    stochastic_evaluation: bool = False
+    """Whether to use actions rather than (deterministic) mean actions during evaluation."""
+
+    def validate(self) -> bool:
+        """Validate the configuration."""
+        return True
+
+    def expand(self) -> None:
+        """Expand the configuration."""
+        pass
+
+
 class Trainer(ABC):
     def __init__(
         self,
         *,
+        cfg: TrainerCfg,
         env: Wrapper,
         agents: Union[Agent, List[Agent]],
         scopes: Optional[List[int]] = None,
-        cfg: Optional[dict] = None,
     ) -> None:
         """Base trainer class for implementing custom trainers.
 
+        :param cfg: Configuration dictionary.
         :param env: Environment to train/evaluate on.
         :param agents: Agent(s) to train/evaluate.
         :param scopes: Number of environments for each simultaneous agent to train/evaluate on.
-        :param cfg: Configuration dictionary.
         """
-        self.cfg = cfg if cfg is not None else {}
         self.env = env
         self.agents = agents
         self.scopes = scopes if scopes is not None else []
 
-        # get configuration
-        self.timesteps = self.cfg.get("timesteps", 0)
-        self.headless = self.cfg.get("headless", False)
-        self.disable_progressbar = self.cfg.get("disable_progressbar", False)
-        self.close_environment_at_exit = self.cfg.get("close_environment_at_exit", True)
-        self.environment_info = self.cfg.get("environment_info", "episode")
-        self.stochastic_evaluation = self.cfg.get("stochastic_evaluation", False)
-
-        self.initial_timestep = 0
+        self.cfg = cfg
+        self.cfg.expand()
 
         # setup agents
         self.num_simultaneous_agents = 1
         self._setup_agents()
 
         # register environment closing if configured
-        if self.close_environment_at_exit:
+        if self.cfg.close_environment_at_exit:
 
             @atexit.register
             def close_env():
@@ -164,18 +188,16 @@ class Trainer(ABC):
         observations, infos = self.env.reset()
         states = self.env.state()
 
-        for timestep in tqdm.tqdm(
-            range(self.initial_timestep, self.timesteps), disable=self.disable_progressbar, file=sys.stdout
-        ):
+        for timestep in tqdm.tqdm(range(self.cfg.timesteps), disable=self.cfg.disable_progressbar, file=sys.stdout):
 
             # pre-interaction
-            self.agents.pre_interaction(timestep=timestep, timesteps=self.timesteps)
+            self.agents.pre_interaction(timestep=timestep, timesteps=self.cfg.timesteps)
 
             with contextlib.nullcontext():
                 # compute actions
                 with ScopedTimer() as timer:
                     actions, outputs = self.agents.act(
-                        observations, states, timestep=timestep, timesteps=self.timesteps
+                        observations, states, timestep=timestep, timesteps=self.cfg.timesteps
                     )
                     self.agents.track_data("Stats / Inference time (ms)", timer.elapsed_time_ms)
 
@@ -186,7 +208,7 @@ class Trainer(ABC):
                     self.agents.track_data("Stats / Env stepping time (ms)", timer.elapsed_time_ms)
 
                 # render the environments
-                if not self.headless:
+                if not self.cfg.headless:
                     self.env.render()
 
                 # record the environments' transitions
@@ -201,14 +223,14 @@ class Trainer(ABC):
                     truncated=truncated,
                     infos=infos,
                     timestep=timestep,
-                    timesteps=self.timesteps,
+                    timesteps=self.cfg.timesteps,
                 )
 
             # log environment info
             # TODO:
 
             # post-interaction
-            self.agents.post_interaction(timestep=timestep, timesteps=self.timesteps)
+            self.agents.post_interaction(timestep=timestep, timesteps=self.cfg.timesteps)
 
             # reset environments
             # - parallel/vectorized environments (single or multi-agent)
@@ -256,21 +278,19 @@ class Trainer(ABC):
         observations, infos = self.env.reset()
         states = self.env.state()
 
-        for timestep in tqdm.tqdm(
-            range(self.initial_timestep, self.timesteps), disable=self.disable_progressbar, file=sys.stdout
-        ):
+        for timestep in tqdm.tqdm(range(self.cfg.timesteps), disable=self.cfg.disable_progressbar, file=sys.stdout):
 
             # pre-interaction
-            self.agents.pre_interaction(timestep=timestep, timesteps=self.timesteps)
+            self.agents.pre_interaction(timestep=timestep, timesteps=self.cfg.timesteps)
 
             with contextlib.nullcontext():
                 # compute actions
                 with ScopedTimer() as timer:
                     actions, outputs = self.agents.act(
-                        observations, states, timestep=timestep, timesteps=self.timesteps
+                        observations, states, timestep=timestep, timesteps=self.cfg.timesteps
                     )
                     self.agents.track_data("Stats / Inference time (ms)", timer.elapsed_time_ms)
-                actions = actions if self.stochastic_evaluation else outputs.get("mean_actions", actions)
+                actions = actions if self.cfg.stochastic_evaluation else outputs.get("mean_actions", actions)
 
                 # step the environments
                 with ScopedTimer() as timer:
@@ -279,7 +299,7 @@ class Trainer(ABC):
                     self.agents.track_data("Stats / Env stepping time (ms)", timer.elapsed_time_ms)
 
                 # render the environments
-                if not self.headless:
+                if not self.cfg.headless:
                     self.env.render()
 
                 # record the environments' transitions
@@ -294,14 +314,14 @@ class Trainer(ABC):
                     truncated=truncated,
                     infos=infos,
                     timestep=timestep,
-                    timesteps=self.timesteps,
+                    timesteps=self.cfg.timesteps,
                 )
 
                 # log environment info
                 # TODO:
 
             # post-interaction
-            super(self.agents.__class__, self.agents).post_interaction(timestep=timestep, timesteps=self.timesteps)
+            super(self.agents.__class__, self.agents).post_interaction(timestep=timestep, timesteps=self.cfg.timesteps)
 
             # reset environments
             # - parallel/vectorized environments (single or multi-agent)

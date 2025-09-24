@@ -2,27 +2,19 @@ from typing import List, Optional, Union
 
 import contextlib
 import copy
+import dataclasses
 import sys
 import tqdm
 
 from skrl.agents.warp import Agent
 from skrl.envs.wrappers.warp import Wrapper
-from skrl.trainers.warp import Trainer
+from skrl.trainers.warp import Trainer, TrainerCfg
 from skrl.utils import ScopedTimer
 
 
-# fmt: off
-# [start-config-dict-warp]
-SEQUENTIAL_TRAINER_DEFAULT_CONFIG = {
-    "timesteps": 100000,            # number of timesteps to train for
-    "headless": False,              # whether to use headless mode (no rendering)
-    "disable_progressbar": False,   # whether to disable the progressbar. If None, disable on non-TTY
-    "close_environment_at_exit": True,   # whether to close the environment on normal program termination
-    "environment_info": "episode",       # key used to get and log environment info
-    "stochastic_evaluation": False,      # whether to use actions rather than (deterministic) mean actions during evaluation
-}
-# [end-config-dict-warp]
-# fmt: on
+@dataclasses.dataclass(kw_only=True)
+class SequentialTrainerCfg(TrainerCfg):
+    """Configuration for the sequential trainer."""
 
 
 class SequentialTrainer(Trainer):
@@ -43,10 +35,13 @@ class SequentialTrainer(Trainer):
         :param scopes: Number of environments for each simultaneous agent to train/evaluate on.
         :param cfg: Configuration dictionary.
         """
-        _cfg = copy.deepcopy(SEQUENTIAL_TRAINER_DEFAULT_CONFIG)
-        _cfg.update(cfg if cfg is not None else {})
-        scopes = scopes if scopes is not None else []
-        super().__init__(env=env, agents=agents, scopes=scopes, cfg=_cfg)
+        self.cfg: SequentialTrainerCfg
+        super().__init__(
+            env=env,
+            agents=agents,
+            scopes=scopes if scopes is not None else [],
+            cfg=SequentialTrainerCfg(**cfg) if isinstance(cfg, dict) else cfg,
+        )
 
         # init agents
         if self.num_simultaneous_agents > 1:
