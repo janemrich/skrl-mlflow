@@ -1,9 +1,64 @@
-from typing import Sequence, Tuple
+import math
 
 import numpy as np
 import warp as wp
 
+from .config import block_dim, nn_transposed_computation, tiles_dim_0, tiles_dim_1, tiles_dim_2
 from .module import Module
+
+
+def create_kernel(in_features: int, out_features: int, transposed: bool):
+
+    @wp.kernel
+    def kernel(
+        input: wp.array2d(dtype=float),
+        weight: wp.array2d(dtype=float),
+        bias: wp.array2d(dtype=float),
+        output: wp.array2d(dtype=float),
+    ):
+        i, j = wp.tid()
+        # compute the number of iteration steps for GEMM
+        _in_features = weight.shape[
+            1
+        ]  # don't use `in_features` to have only one kernel definition for all Linear modules
+        count = _in_features / tiles_dim_2
+        if _in_features % tiles_dim_2 != 0:
+            count += 1
+        # static conditional (the generated code will contain only the branch that is taken)
+        # - transposed input/output: (in_features, batch_size) -> (out_features, batch_size)
+        if wp.static(transposed):
+            sum = wp.tile_zeros(shape=(tiles_dim_0, tiles_dim_1), dtype=output.dtype)
+            # - GEMM (weight * input)
+            for k in range(0, count):
+                tiled_weight = wp.tile_load(
+                    weight, shape=(tiles_dim_0, tiles_dim_2), offset=(i * tiles_dim_0, k * tiles_dim_2)
+                )
+                x = wp.tile_load(input, shape=(tiles_dim_2, tiles_dim_1), offset=(k * tiles_dim_2, j * tiles_dim_1))
+                wp.tile_matmul(tiled_weight, x, sum)
+            # - bias
+            tiled_bias = wp.tile_load(bias, shape=(tiles_dim_0, 1), offset=(i * tiles_dim_0, 0))
+            sum += wp.tile_broadcast(tiled_bias, shape=(tiles_dim_0, tiles_dim_1))
+            # store output
+            wp.tile_store(output, sum, offset=(i * tiles_dim_0, j * tiles_dim_1))
+        # - non-transposed input/output: (batch_size, in_features) -> (batch_size, out_features)
+        else:
+            sum = wp.tile_zeros(shape=(tiles_dim_1, tiles_dim_0), dtype=output.dtype)
+            # - GEMM (weight * input)
+            for k in range(0, count):
+                tiled_weight = wp.tile_load(
+                    weight, shape=(tiles_dim_1, tiles_dim_2), offset=(j * tiles_dim_1, k * tiles_dim_2)
+                )
+                x = wp.tile_transpose(
+                    wp.tile_load(input, shape=(tiles_dim_0, tiles_dim_2), offset=(i * tiles_dim_0, k * tiles_dim_2))
+                )
+                wp.tile_matmul(tiled_weight, x, sum)
+            # - bias
+            tiled_bias = wp.tile_load(bias, shape=(tiles_dim_1, 1), offset=(j * tiles_dim_1, 0))
+            sum += wp.tile_broadcast(tiled_bias, shape=(tiles_dim_1, tiles_dim_0))
+            # store output
+            wp.tile_store(output, wp.tile_transpose(sum), offset=(i * tiles_dim_0, j * tiles_dim_1))
+
+    return kernel
 
 
 class Linear(Module):
@@ -25,6 +80,9 @@ class Linear(Module):
         self.register_parameter("bias", self.bias)
         # set default/initial values
         self.reset_parameters()
+        # execution variables
+        self._cache = {}
+        self._kernel = create_kernel(in_features, out_features, transposed=nn_transposed_computation)
 
     def reset_parameters(self) -> None:
         # init parameters: sampling uniform(-1/sqrt(in_features), 1/sqrt(in_features)). \cite{he2015delving}
@@ -37,28 +95,25 @@ class Linear(Module):
             value = np.random.uniform(-bound, bound, size=self.bias.shape)
             wp.copy(self.bias, wp.from_numpy(value, dtype=wp.float32))
 
-    def parse(self, uid: str) -> Tuple[str, Sequence[str], Sequence[str], Sequence[str], Sequence[str]]:
-        # templates
-        template_kernel = """
-# Linear({in_features}, {out_features})
-tiled_weight_{uid} = wp.tile_load(weight_{uid}, shape=({out_features}, {in_features}))
-tiled_bias_{uid} = wp.tile_load(bias_{uid}, shape=({out_features}, 1))
-{output} = wp.tile_matmul(tiled_weight_{uid}, {input}) + wp.tile_broadcast(tiled_bias_{uid}, shape=({out_features}, TILE_THREADS))
-"""
-        # generation
-        functions = []
-        kernel_parameters = [self.weight, self.bias]  # TODO: check when bias is None
-        kernel_arguments = [
-            "weight_{uid}: wp.array2d(dtype=float)".format(uid=uid),
-            "bias_{uid}: wp.array2d(dtype=float)".format(uid=uid),
-        ]
-        kernel_definitions = [
-            template_kernel.strip().format(
-                uid=uid,
-                input="{input}",
-                output="{output}",
-                in_features=self.in_features,
-                out_features=self.out_features,
-            ),
-        ]
-        return None, functions, kernel_parameters, kernel_arguments, kernel_definitions
+    def forward(self, input: wp.array) -> wp.array:
+        shape = (
+            (self.out_features, input.shape[1]) if nn_transposed_computation else (input.shape[0], self.out_features)
+        )
+        # cache output
+        if shape not in self._cache:
+            self._cache[shape] = wp.empty(shape, dtype=wp.float32, device=self.device, requires_grad=True)
+        output = self._cache[shape]
+        # launch kernel
+        wp.launch_tiled(
+            self._kernel,
+            dim=[math.ceil(shape[0] / tiles_dim_0), math.ceil(shape[1] / tiles_dim_1)],
+            inputs=[
+                input,
+                self.weight,
+                self.bias,
+            ],
+            outputs=[output],
+            device=self.device,
+            block_dim=block_dim,
+        )
+        return output

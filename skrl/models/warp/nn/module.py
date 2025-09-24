@@ -1,4 +1,4 @@
-from typing import Iterator, Mapping, Optional, Sequence, Tuple
+from typing import Iterator, Mapping, Optional, Tuple
 
 from abc import ABC
 from collections import OrderedDict
@@ -65,9 +65,6 @@ class Module(ABC):
 
     def named_modules(self) -> Iterator[Tuple[str, "Module"]]:
         return self._modules.items()
-
-    def parse(self, uid: str) -> Tuple[str, Sequence[str], Sequence[str], Sequence[str], Sequence[str]]:
-        raise NotImplementedError(f'Module [{type(self).__name__}] is missing the required "parse" function')
 
     def state_dict(
         self, *, destination: Optional[Mapping[str, wp.array]] = None, prefix: str = ""
