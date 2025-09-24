@@ -2,16 +2,26 @@
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
-## [2.0.0] - unreleased
+## [2.0.0] - Unreleased
 ### Added
+- Add Tabular model instantiator (epsilon-greedy variant)
 - Add `compute_space_limits` space utility to get Gymnasium spaces' limits
 - Add `ScopedTimer` utils to measure code execution time
 - Add `SummaryWriter` implementation to log data to TensorBoard without relying on third-party libraries
 - Log agent inference and algorithm update, and environment steeping time to TensorBoard
 
+### Changed
+- Update minimum supported Python version to 3.10
+- Drop support for PyTorch versions prior to 1.11 (the previous supported version was 1.10)
+
 ### Changed (breaking changes)
 - Refactor the library to differentiate between environment observations and states (also known as privileged observation)
-- Update tabular model and algorithms to operate in any number of parallel environments
+- Implement agent/multi-agent and trainer configurations using Python Data Classes
+  - Unify the different learning rate settings under the `learning_rate` configuration
+  - Remove the `clip_predicted_values` redundant configuration by checking for `value_clip > 0`
+  - Remove specific exploration noise settings (`initial_scale`, `final_scale` and `timesteps`)
+    in favor of generic scheduling functions
+- Update tabular model definition to operate in any number of parallel environments
 
 ### Removed
 - Remove checkpoints/models migration support from other RL libraries
