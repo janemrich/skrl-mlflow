@@ -13,58 +13,7 @@ from skrl.resources.optimizers.warp import Adam
 from skrl.resources.schedulers.warp import KLAdaptiveLR
 from skrl.utils import ScopedTimer
 
-
-# fmt: off
-# [start-config-dict-warp]
-PPO_DEFAULT_CONFIG = {
-    "rollouts": 16,                 # number of rollouts before updating
-    "learning_epochs": 8,           # number of learning epochs during each update
-    "mini_batches": 2,              # number of mini batches during each learning epoch
-
-    "discount_factor": 0.99,        # discount factor (gamma)
-    "lambda": 0.95,                 # TD(lambda) coefficient (lam) for computing returns and advantages
-
-    "learning_rate": 1e-3,                  # learning rate
-    "learning_rate_scheduler": None,        # learning rate scheduler class (see torch.optim.lr_scheduler)
-    "learning_rate_scheduler_kwargs": {},   # learning rate scheduler's kwargs (e.g. {"step_size": 1e-3})
-
-    "observation_preprocessor": None,       # observation preprocessor class (see skrl.resources.preprocessors)
-    "observation_preprocessor_kwargs": {},  # observation preprocessor's kwargs (e.g. {"size": env.observation_space})
-    "state_preprocessor": None,             # state preprocessor class (see skrl.resources.preprocessors)
-    "state_preprocessor_kwargs": {},        # state preprocessor's kwargs (e.g. {"size": env.state_space})
-    "value_preprocessor": None,             # value preprocessor class (see skrl.resources.preprocessors)
-    "value_preprocessor_kwargs": {},        # value preprocessor's kwargs (e.g. {"size": 1})
-
-    "random_timesteps": 0,          # random exploration steps
-    "learning_starts": 0,           # learning starts after this many steps
-
-    "grad_norm_clip": 0.5,              # clipping coefficient for the norm of the gradients
-    "ratio_clip": 0.2,                  # clipping coefficient for computing the clipped surrogate objective
-    "value_clip": 0.2,                  # clipping coefficient for computing the value loss (if clip_predicted_values is True)
-    "clip_predicted_values": False,     # clip predicted values during value loss computation
-
-    "entropy_loss_scale": 0.0,      # entropy loss scaling factor
-    "value_loss_scale": 1.0,        # value loss scaling factor
-
-    "kl_threshold": 0,              # KL divergence threshold for early stopping
-
-    "rewards_shaper": None,         # rewards shaping function: Callable(reward, timestep, timesteps) -> reward
-    "time_limit_bootstrap": False,  # bootstrap at timeout termination (episode truncation)
-
-    "experiment": {
-        "directory": "",            # experiment's parent directory
-        "experiment_name": "",      # experiment name
-        "write_interval": "auto",   # TensorBoard writing interval (timesteps)
-
-        "checkpoint_interval": "auto",      # interval for checkpoints (timesteps)
-        "store_separately": False,          # whether to store checkpoints separately
-
-        "wandb": False,             # whether to use Weights & Biases
-        "wandb_kwargs": {}          # wandb kwargs (see https://docs.wandb.ai/ref/python/init)
-    }
-}
-# [end-config-dict-warp]
-# fmt: on
+from .ppo_cfg import PPO_CFG
 
 
 def enable_grad(obj, *, enabled: bool):
@@ -241,9 +190,7 @@ class PPO(Agent):
 
         :raises KeyError: If a configuration key is missing.
         """
-        # _cfg = copy.deepcopy(PPO_DEFAULT_CONFIG)  # TODO: ValueError: ctypes objects containing pointers cannot be pickled
-        _cfg = PPO_DEFAULT_CONFIG
-        _cfg.update(cfg if cfg is not None else {})
+        self.cfg: PPO_CFG
         super().__init__(
             models=models,
             memory=memory,
@@ -251,7 +198,7 @@ class PPO(Agent):
             state_space=state_space,
             action_space=action_space,
             device=device,
-            cfg=_cfg,
+            cfg=PPO_CFG(**cfg) if isinstance(cfg, dict) else cfg,
         )
 
         # models
@@ -262,52 +209,23 @@ class PPO(Agent):
         self.checkpoint_modules["policy"] = self.policy
         self.checkpoint_modules["value"] = self.value
 
-        # configuration
-        self._learning_epochs = self.cfg["learning_epochs"]
-        self._mini_batches = self.cfg["mini_batches"]
-        self._rollouts = self.cfg["rollouts"]
-        self._rollout = 0
-
-        self._grad_norm_clip = self.cfg["grad_norm_clip"]
-        self._ratio_clip = self.cfg["ratio_clip"]
-        self._value_clip = self.cfg["value_clip"]
-        self._clip_predicted_values = self.cfg["clip_predicted_values"]
-
-        self._value_loss_scale = self.cfg["value_loss_scale"]
-        self._entropy_loss_scale = self.cfg["entropy_loss_scale"]
-
-        self._kl_threshold = self.cfg["kl_threshold"]
-
-        self._learning_rate = self.cfg["learning_rate"]
-        self._learning_rate_scheduler = self.cfg["learning_rate_scheduler"]
-
-        self._observation_preprocessor = self.cfg["observation_preprocessor"]
-        self._state_preprocessor = self.cfg["state_preprocessor"]
-        self._value_preprocessor = self.cfg["value_preprocessor"]
-
-        self._discount_factor = self.cfg["discount_factor"]
-        self._lambda = self.cfg["lambda"]
-
-        self._random_timesteps = self.cfg["random_timesteps"]
-        self._learning_starts = self.cfg["learning_starts"]
-
-        self._rewards_shaper = self.cfg["rewards_shaper"]
-        self._time_limit_bootstrap = self.cfg["time_limit_bootstrap"]
-
         # set up optimizer and learning rate scheduler
         if self.policy is not None and self.value is not None:
+            self.learning_rate = self.cfg.learning_rate[0]
+            # - optimizers
             if self.policy is self.value:
-                self.optimizer = Adam(self.policy.parameters(), lr=self._learning_rate, device=self.device)
+                self.optimizer = Adam(self.policy.parameters(), lr=self.learning_rate, device=self.device)
             else:
                 self.optimizer = Adam(
                     self.policy.parameters() + self.value.parameters(),
-                    lr=self._learning_rate,
+                    lr=self.learning_rate,
                     device=self.device,
                 )
-            if self._learning_rate_scheduler is not None:
-                self.scheduler = self._learning_rate_scheduler(**self.cfg["learning_rate_scheduler_kwargs"])
-
             # self.checkpoint_modules["optimizer"] = self.optimizer
+            # - learning rate schedulers
+            self.scheduler = self.cfg.learning_rate_scheduler[0]
+            if self.scheduler is not None:
+                self.scheduler = self.cfg.learning_rate_scheduler[0](**self.cfg.learning_rate_scheduler_kwargs[0])
 
             # training variables
             self._loss = wp.zeros((1,), dtype=wp.float32, requires_grad=True)
@@ -318,22 +236,22 @@ class PPO(Agent):
 
         # set up preprocessors
         # - observations
-        if self._observation_preprocessor:
-            self._observation_preprocessor = self._observation_preprocessor(
-                **self.cfg["observation_preprocessor_kwargs"]
+        if self.cfg.observation_preprocessor:
+            self._observation_preprocessor = self.cfg.observation_preprocessor(
+                **self.cfg.observation_preprocessor_kwargs
             )
             self.checkpoint_modules["observation_preprocessor"] = self._observation_preprocessor
         else:
             self._observation_preprocessor = self._empty_preprocessor
         # - states
-        if self._state_preprocessor:
-            self._state_preprocessor = self._state_preprocessor(**self.cfg["state_preprocessor_kwargs"])
+        if self.cfg.state_preprocessor:
+            self._state_preprocessor = self.cfg.state_preprocessor(**self.cfg.state_preprocessor_kwargs)
             self.checkpoint_modules["state_preprocessor"] = self._state_preprocessor
         else:
             self._state_preprocessor = self._empty_preprocessor
         # - values
-        if self._value_preprocessor:
-            self._value_preprocessor = self._value_preprocessor(**self.cfg["value_preprocessor_kwargs"])
+        if self.cfg.value_preprocessor:
+            self._value_preprocessor = self.cfg.value_preprocessor(**self.cfg.value_preprocessor_kwargs)
             self.checkpoint_modules["value_preprocessor"] = self._value_preprocessor
         else:
             self._value_preprocessor = self._empty_preprocessor
@@ -344,6 +262,7 @@ class PPO(Agent):
         :param trainer_cfg: Trainer configuration.
         """
         super().init(trainer_cfg=trainer_cfg)
+        self.enable_models_training_mode(False)
 
         # create tensors in memory
         if self.memory is not None:
@@ -364,6 +283,7 @@ class PPO(Agent):
         self._current_next_observations = None
         self._current_next_states = None
         self._current_log_prob = None
+        self._rollout = 0
 
     def act(
         self, observations: wp.array, states: Union[wp.array, None], *, timestep: int, timesteps: int
@@ -384,7 +304,7 @@ class PPO(Agent):
         }
         # sample random actions
         # TODO, check for stochasticity
-        if timestep < self._random_timesteps:
+        if timestep < self.cfg.random_timesteps:
             return self.policy.random_act(inputs, role="policy")
 
         # sample stochastic actions
@@ -441,8 +361,8 @@ class PPO(Agent):
             self._current_next_states = next_states
 
             # reward shaping
-            if self._rewards_shaper is not None:
-                rewards = self._rewards_shaper(rewards, timestep, timesteps)
+            if self.cfg.rewards_shaper is not None:
+                rewards = self.cfg.rewards_shaper(rewards, timestep, timesteps)
 
             # compute values
             inputs = {
@@ -453,11 +373,11 @@ class PPO(Agent):
             values = self._value_preprocessor(values, inverse=True, inplace=True)
 
             # time-limit (truncation) bootstrapping
-            if self._time_limit_bootstrap:
+            if self.cfg.time_limit_bootstrap:
                 wp.launch(
                     _time_limit_bootstrap,
                     dim=rewards.shape[0],
-                    inputs=[rewards, values, truncated, self._discount_factor],
+                    inputs=[rewards, values, truncated, self.cfg.discount_factor],
                     device=self.device,
                 )
 
@@ -488,7 +408,7 @@ class PPO(Agent):
         :param timesteps: Number of timesteps.
         """
         self._rollout += 1
-        if not self._rollout % self._rollouts and timestep >= self._learning_starts:
+        if not self._rollout % self.cfg.rollouts and timestep >= self.cfg.learning_starts:
             with ScopedTimer() as timer:
                 self.enable_training_mode(True)
                 self.update(timestep=timestep, timesteps=timesteps)
@@ -530,8 +450,8 @@ class PPO(Agent):
                 returns,
                 advantages,
                 last_values,
-                self._discount_factor,
-                self._lambda,
+                self.cfg.discount_factor,
+                self.cfg.lambda_,
                 values.shape[0],
             ],
             device=self.device,
@@ -551,14 +471,14 @@ class PPO(Agent):
         self._value_preprocessor(returns, train=True, inplace=True)
 
         # sample mini-batches from memory
-        sampled_batches = self.memory.sample_all(names=self._tensors_names, mini_batches=self._mini_batches)
+        sampled_batches = self.memory.sample_all(names=self._tensors_names, mini_batches=self.cfg.mini_batches)
 
         cumulative_policy_loss = 0
         cumulative_entropy_loss = 0
         cumulative_value_loss = 0
 
         # learning epochs
-        for epoch in range(self._learning_epochs):
+        for epoch in range(self.cfg.learning_epochs):
             kl_divergences = []
 
             # mini-batches loop
@@ -596,12 +516,12 @@ class PPO(Agent):
                     stddev = outputs["stddev"]
                     predicted_values, _ = self.value.act(inputs, role="value")
                     # compute entropy loss
-                    if self._entropy_loss_scale:
+                    if self.cfg.entropy_loss_scale:
                         entropy = self.policy.get_entropy(stddev, role="policy")
                         wp.launch(
                             _entropy_loss,
                             dim=entropy.shape[0],
-                            inputs=[entropy, self._entropy_loss_scale, entropy.shape[0], self._entropy_loss],
+                            inputs=[entropy, self.cfg.entropy_loss_scale, entropy.shape[0], self._entropy_loss],
                             device=self.device,
                         )
                     # compute policy/value loss
@@ -615,9 +535,9 @@ class PPO(Agent):
                             sampled_advantages,
                             outputs["log_prob"],
                             predicted_values,
-                            self._ratio_clip,
-                            self._value_clip if self._clip_predicted_values else 0.0,
-                            self._value_loss_scale,
+                            self.cfg.ratio_clip,
+                            self.cfg.value_clip,
+                            self.cfg.value_loss_scale,
                             float(sampled_log_prob.shape[0]),
                             self._policy_loss,
                             self._value_loss,
@@ -637,39 +557,41 @@ class PPO(Agent):
                 # early stopping with KL divergence
                 kl_divergence = self._kl_divergence.numpy().item()
                 kl_divergences.append(kl_divergence)
-                if self._kl_threshold and kl_divergence > self._kl_threshold:
+                if self.cfg.kl_threshold and kl_divergence > self.cfg.kl_threshold:
                     break
 
                 # optimization step
                 tape.backward(self._loss)
-                if self._grad_norm_clip > 0:
-                    self.optimizer.clip_by_total_norm(self._grad_norm_clip)
-                self.optimizer.step(lr=self._learning_rate if self._learning_rate_scheduler else None)
+                if self.cfg.grad_norm_clip > 0:
+                    self.optimizer.clip_by_total_norm(self.cfg.grad_norm_clip)
+                self.optimizer.step(lr=self.learning_rate if self.scheduler else None)
                 tape.zero()
 
                 # update cumulative losses
                 cumulative_policy_loss += self._policy_loss.numpy().item()
                 cumulative_value_loss += self._value_loss.numpy().item()
-                if self._entropy_loss_scale:
+                if self.cfg.entropy_loss_scale:
                     cumulative_entropy_loss += self._entropy_loss.numpy().item()
 
             # update learning rate
-            if self._learning_rate_scheduler:
-                if self._learning_rate_scheduler is KLAdaptiveLR:
+            if self.scheduler:
+                if self.scheduler is KLAdaptiveLR:
                     kl = np.mean(kl_divergences)
-                    self._learning_rate = self.scheduler(timestep, lr=self._learning_rate, kl=kl)
+                    self.learning_rate = self.scheduler(timestep, lr=self.learning_rate, kl=kl)
                 else:
-                    self._learning_rate *= self.scheduler(timestep)
+                    self.learning_rate *= self.scheduler(timestep)
 
         # record data
-        self.track_data("Loss / Policy loss", cumulative_policy_loss / (self._learning_epochs * self._mini_batches))
-        self.track_data("Loss / Value loss", cumulative_value_loss / (self._learning_epochs * self._mini_batches))
-        if self._entropy_loss_scale:
+        self.track_data(
+            "Loss / Policy loss", cumulative_policy_loss / (self.cfg.learning_epochs * self.cfg.mini_batches)
+        )
+        self.track_data("Loss / Value loss", cumulative_value_loss / (self.cfg.learning_epochs * self.cfg.mini_batches))
+        if self.cfg.entropy_loss_scale:
             self.track_data(
-                "Loss / Entropy loss", cumulative_entropy_loss / (self._learning_epochs * self._mini_batches)
+                "Loss / Entropy loss", cumulative_entropy_loss / (self.cfg.learning_epochs * self.cfg.mini_batches)
             )
 
         self.track_data("Policy / Standard deviation", stddev.numpy().mean().item())
 
-        if self._learning_rate_scheduler:
-            self.track_data("Learning / Learning rate", self._learning_rate)
+        if self.scheduler:
+            self.track_data("Learning / Learning rate", self.learning_rate)
