@@ -112,7 +112,17 @@ Basic inheritance usage
 API (PyTorch)
 ^^^^^^^^^^^^^
 
-.. autoclass:: skrl.agents.torch.base.Agent
+.. autoclass:: skrl.agents.torch.AgentCfg
+    :show-inheritance:
+    :inherited-members:
+    :members:
+
+.. autoclass:: skrl.agents.torch.ExperimentCfg
+    :show-inheritance:
+    :inherited-members:
+    :members:
+
+.. autoclass:: skrl.agents.torch.Agent
     :undoc-members:
     :show-inheritance:
     :inherited-members:
@@ -128,7 +138,17 @@ API (PyTorch)
 API (JAX)
 ^^^^^^^^^
 
-.. autoclass:: skrl.agents.jax.base.Agent
+.. autoclass:: skrl.agents.jax.AgentCfg
+    :show-inheritance:
+    :inherited-members:
+    :members:
+
+.. autoclass:: skrl.agents.jax.ExperimentCfg
+    :show-inheritance:
+    :inherited-members:
+    :members:
+
+.. autoclass:: skrl.agents.jax.Agent
     :undoc-members:
     :show-inheritance:
     :inherited-members:
