@@ -168,6 +168,9 @@ class DQN(Agent):
             "truncated",
         ]
 
+        # create temporary variables needed for storage and computation
+        self._update_counter = 0
+
         # set up models for just-in-time compilation with XLA
         self.q_network.apply = jax.jit(self.q_network.apply, static_argnums=2)
         if self.target_q_network is not None:
@@ -366,7 +369,8 @@ class DQN(Agent):
             )
 
             # update target network
-            if not timestep % self.cfg.target_update_interval:
+            self._update_counter += 1
+            if not self._update_counter % self.cfg.target_update_interval:
                 self.target_q_network.update_parameters(self.q_network, polyak=self.cfg.polyak)
 
             # update learning rate
