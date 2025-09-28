@@ -7,7 +7,7 @@ import jax.numpy as jnp
 
 # import the skrl components to build the RL system
 from skrl import config, logger
-from skrl.agents.jax.td3 import TD3, TD3_DEFAULT_CONFIG
+from skrl.agents.jax.td3 import TD3, TD3_CFG
 from skrl.envs.wrappers.jax import wrap_env
 from skrl.memories.jax import RandomMemory
 from skrl.models.jax import DeterministicMixin, Model
@@ -116,20 +116,20 @@ for model in models.values():
 
 # configure and instantiate the agent (visit its documentation to see all the options)
 # https://skrl.readthedocs.io/en/latest/api/agents/td3.html#configuration-and-hyperparameters
-cfg = TD3_DEFAULT_CONFIG.copy()
-cfg["exploration"]["noise"] = GaussianNoise
-cfg["exploration"]["noise_kwargs"] = {"mean": 0.0, "std": 0.1, "device": device}
-cfg["smooth_regularization_noise"] = GaussianNoise
-cfg["smooth_regularization_noise_kwargs"] = {"mean": 0.0, "std": 0.2, "device": device}
-cfg["smooth_regularization_clip"] = 0.5
-cfg["discount_factor"] = 0.98
-cfg["batch_size"] = 100
-cfg["random_timesteps"] = 100
-cfg["learning_starts"] = 100
+cfg = TD3_CFG()
+cfg.exploration_noise = GaussianNoise
+cfg.exploration_noise_kwargs = {"mean": 0.0, "std": 0.1, "device": device}
+cfg.smooth_regularization_noise = GaussianNoise
+cfg.smooth_regularization_noise_kwargs = {"mean": 0.0, "std": 0.2, "device": device}
+cfg.smooth_regularization_clip = 0.5
+cfg.discount_factor = 0.98
+cfg.batch_size = 100
+cfg.random_timesteps = 100
+cfg.learning_starts = 100
 # logging to TensorBoard and write checkpoints (in timesteps)
-cfg["experiment"]["write_interval"] = "auto" if not args.eval else 0
-cfg["experiment"]["checkpoint_interval"] = "auto" if not args.eval else 0
-cfg["experiment"]["directory"] = f"runs/jax/{task_name}"
+cfg.experiment.write_interval = "auto" if not args.eval else 0
+cfg.experiment.checkpoint_interval = "auto" if not args.eval else 0
+cfg.experiment.directory = f"runs/jax/{task_name}"
 
 agent = TD3(
     models=models,

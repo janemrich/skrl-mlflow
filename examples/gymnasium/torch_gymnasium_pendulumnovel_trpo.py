@@ -8,7 +8,7 @@ import torch.nn as nn
 
 # import the skrl components to build the RL system
 from skrl import logger
-from skrl.agents.torch.trpo import TRPO, TRPO_DEFAULT_CONFIG
+from skrl.agents.torch.trpo import TRPO, TRPO_CFG
 from skrl.envs.wrappers.torch import wrap_env
 from skrl.memories.torch import RandomMemory
 from skrl.models.torch import DeterministicMixin, GaussianMixin, Model
@@ -132,22 +132,22 @@ models["value"] = Value(env.observation_space, env.state_space, env.action_space
 
 # configure and instantiate the agent (visit its documentation to see all the options)
 # https://skrl.readthedocs.io/en/latest/api/agents/trpo.html#configuration-and-hyperparameters
-cfg = TRPO_DEFAULT_CONFIG.copy()
-cfg["rollouts"] = 1024  # memory_size
-cfg["learning_epochs"] = 10
-cfg["mini_batches"] = 32
-cfg["discount_factor"] = 0.9
-cfg["lambda"] = 0.95
-cfg["learning_rate"] = 1e-3
-cfg["grad_norm_clip"] = 0.5
-cfg["observation_preprocessor"] = RunningStandardScaler
-cfg["observation_preprocessor_kwargs"] = {"size": env.observation_space, "device": device}
-cfg["value_preprocessor"] = RunningStandardScaler
-cfg["value_preprocessor_kwargs"] = {"size": 1, "device": device}
+cfg = TRPO_CFG()
+cfg.rollouts = 1024  # memory_size
+cfg.learning_epochs = 10
+cfg.mini_batches = 32
+cfg.discount_factor = 0.9
+cfg.lambda_ = 0.95
+cfg.learning_rate = 1e-3
+cfg.grad_norm_clip = 0.5
+cfg.observation_preprocessor = RunningStandardScaler
+cfg.observation_preprocessor_kwargs = {"size": env.observation_space, "device": device}
+cfg.value_preprocessor = RunningStandardScaler
+cfg.value_preprocessor_kwargs = {"size": 1, "device": device}
 # logging to TensorBoard and write checkpoints (in timesteps)
-cfg["experiment"]["write_interval"] = "auto" if not args.eval else 0
-cfg["experiment"]["checkpoint_interval"] = "auto" if not args.eval else 0
-cfg["experiment"]["directory"] = f"runs/torch/{task_name}"
+cfg.experiment.write_interval = "auto" if not args.eval else 0
+cfg.experiment.checkpoint_interval = "auto" if not args.eval else 0
+cfg.experiment.directory = f"runs/torch/{task_name}"
 
 agent = TRPO(
     models=models,
