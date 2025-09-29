@@ -417,7 +417,7 @@ def test_tabular_model(capsys, device):
     model.to(device=config.torch.parse_device(device))
 
     inputs = _sample_inputs("OBSERVATIONS", observation_space, device)
-    inputs["observations"] = inputs["observations"].to(dtype=torch.int32)
+    inputs["observations"] = inputs["observations"].to(dtype=torch.int64)
     output = model.act(inputs)
     assert len(output) == 2
     assert output[0].shape == (10, 1)

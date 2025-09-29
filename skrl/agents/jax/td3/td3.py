@@ -275,7 +275,7 @@ class TD3(Agent):
                 self.clip_actions_max = np.array(self.action_space.high, dtype=np.float32)
 
         # create temporary variables needed for storage and computation
-        self._critic_update_counter = 0
+        self._update_counter = 0
 
         # set up models for just-in-time compilation with XLA
         self.policy.apply = jax.jit(self.policy.apply, static_argnums=2)
@@ -506,8 +506,8 @@ class TD3(Agent):
             )
 
             # delayed update
-            self._critic_update_counter += 1
-            if not self._critic_update_counter % self.cfg.policy_delay:
+            self._update_counter += 1
+            if not self._update_counter % self.cfg.policy_delay:
 
                 # compute policy (actor) loss
                 grad, policy_loss = _update_policy(
@@ -535,7 +535,7 @@ class TD3(Agent):
                 self.critic_learning_rate *= self.critic_scheduler(timestep)
 
             # record data
-            if not self._critic_update_counter % self.cfg.policy_delay:
+            if not self._update_counter % self.cfg.policy_delay:
                 self.track_data("Loss / Policy loss", policy_loss.item())
             self.track_data("Loss / Critic loss", critic_loss.item())
 
