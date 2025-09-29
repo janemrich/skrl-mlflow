@@ -1,6 +1,7 @@
 from typing import Any, Tuple, Union
 
 import gymnasium
+from packaging import version
 
 import jax
 import jax.dlpack as jax_dlpack
@@ -33,12 +34,16 @@ if _CPU:
 
 def _jax2torch(array, device, from_jax=True):
     if from_jax:
+        if version.parse(jax.__version__) >= version.parse("0.7.0"):
+            return torch_dlpack.from_dlpack(array).to(device=device)
         return torch_dlpack.from_dlpack(jax_dlpack.to_dlpack(array)).to(device=device)
     return torch.tensor(array, device=device)
 
 
 def _torch2jax(tensor, to_jax=True):
     if to_jax:
+        if version.parse(jax.__version__) >= version.parse("0.7.0"):
+            return jax_dlpack.from_dlpack(tensor.contiguous().cpu() if _CPU else tensor.contiguous())
         return jax_dlpack.from_dlpack(
             torch_dlpack.to_dlpack(tensor.contiguous().cpu() if _CPU else tensor.contiguous())
         )
