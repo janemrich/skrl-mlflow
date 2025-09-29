@@ -119,6 +119,7 @@ for model in models.values():
 cfg = TD3_CFG()
 cfg.exploration_noise = GaussianNoise
 cfg.exploration_noise_kwargs = {"mean": 0.0, "std": 0.1, "device": device}
+cfg.exploration_scheduler = lambda timestep, timesteps: max(1 - timestep / timesteps, 1e-2)
 cfg.smooth_regularization_noise = GaussianNoise
 cfg.smooth_regularization_noise_kwargs = {"mean": 0.0, "std": 0.2, "device": device}
 cfg.smooth_regularization_clip = 0.5

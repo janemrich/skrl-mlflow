@@ -123,6 +123,7 @@ for model in models.values():
 cfg = DDPG_CFG()
 cfg.exploration_noise = OrnsteinUhlenbeckNoise
 cfg.exploration_noise_kwargs = {"theta": 0.15, "sigma": 0.1, "base_scale": 1.0, "device": device}
+cfg.exploration_scheduler = lambda timestep, timesteps: max(1 - timestep / timesteps, 1e-2)
 cfg.batch_size = 100
 cfg.random_timesteps = 100
 cfg.learning_starts = 100
