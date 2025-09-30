@@ -26,6 +26,7 @@ function python_virtual_environment() {
 function install_skrl() {
     local python_executable="$1"
     local frameworks=("${@:2}")
+    echo "  |-- Installing skrl..."
     $python_executable -m pip install --quiet -e ..
     for framework in "${frameworks[@]}"; do
         echo "  |     |-- Installing ML framework ($framework)..."
@@ -124,12 +125,20 @@ for example in "${examples[@]}"; do
     echo "  |-- Creating virtual environment..."
     python_executable=$(python_virtual_environment "$example")
     echo "  |     |-- Python executable: $python_executable"
-    echo "  |-- Installing skrl..."
-    install_skrl "$python_executable" "${frameworks[@]}"
     # install per-example dependencies
     if [[ $example == "gym" ]]; then
-        echo "  |-- Installing gym dependencies..."
+        install_skrl "$python_executable" "${frameworks[@]}"
+        echo "  |-- Installing $example dependencies..."
         $python_executable -m pip install --quiet gym
+    elif [[ $example == "gymnasium" ]]; then
+        install_skrl "$python_executable" "${frameworks[@]}"
+    elif [[ $example == "isaaclab" ]]; then
+        echo "  |-- Installing $example dependencies..."
+        isaaclab_dir=$PYTHON_VENV_DIR/deps/IsaacLab
+        $python_executable -m pip install --quiet "isaacsim[all,extscache]==5.0.0" --extra-index-url https://pypi.nvidia.com
+        git clone --quiet --single-branch --no-tags https://github.com/isaac-sim/IsaacLab.git $isaaclab_dir
+        $python_executable -m pip install --quiet "jax[cuda12]<0.6.0" "flax<0.10.7"
+        install_skrl "$python_executable" "${frameworks[@]}"
     fi
     # run examples
     run_scripts "$example" "$python_executable" "${frameworks[@]}"
