@@ -6,7 +6,7 @@ import torch.nn as nn
 
 # import the skrl components to build the RL system
 from skrl import logger
-from skrl.agents.torch.ppo import PPO, PPO_DEFAULT_CONFIG
+from skrl.agents.torch.ppo import PPO, PPO_CFG
 from skrl.envs.loaders.torch import load_isaaclab_env
 from skrl.envs.wrappers.torch import wrap_env
 from skrl.memories.torch import RandomMemory
@@ -102,31 +102,30 @@ models["value"] = models["policy"]  # same instance: shared model
 
 # configure and instantiate the agent (visit its documentation to see all the options)
 # https://skrl.readthedocs.io/en/latest/api/agents/ppo.html#configuration-and-hyperparameters
-cfg = PPO_DEFAULT_CONFIG.copy()
-cfg["rollouts"] = 32  # memory_size
-cfg["learning_epochs"] = 8
-cfg["mini_batches"] = 8
-cfg["discount_factor"] = 0.99
-cfg["lambda"] = 0.95
-cfg["learning_rate"] = 5e-4
-cfg["learning_rate_scheduler"] = KLAdaptiveLR
-cfg["learning_rate_scheduler_kwargs"] = {"kl_threshold": 0.008}
-cfg["value_preprocessor"] = RunningStandardScaler
-cfg["value_preprocessor_kwargs"] = {"size": 1, "device": device}
-cfg["grad_norm_clip"] = 1.0
-cfg["ratio_clip"] = 0.2
-cfg["value_clip"] = 0.2
-cfg["clip_predicted_values"] = True
-cfg["entropy_loss_scale"] = 0.0
-cfg["value_loss_scale"] = 2.0
-cfg["kl_threshold"] = 0
-cfg["rewards_shaper"] = lambda rewards, *args, **kwargs: rewards * 0.1
-cfg["time_limit_bootstrap"] = False
-cfg["mixed_precision"] = False
+cfg = PPO_CFG()
+cfg.rollouts = 32  # memory_size
+cfg.learning_epochs = 8
+cfg.mini_batches = 8
+cfg.discount_factor = 0.99
+cfg.lambda_ = 0.95
+cfg.learning_rate = 5e-4
+cfg.learning_rate_scheduler = KLAdaptiveLR
+cfg.learning_rate_scheduler_kwargs = {"kl_threshold": 0.008}
+cfg.value_preprocessor = RunningStandardScaler
+cfg.value_preprocessor_kwargs = {"size": 1, "device": device}
+cfg.grad_norm_clip = 1.0
+cfg.ratio_clip = 0.2
+cfg.value_clip = 0.2
+cfg.entropy_loss_scale = 0.0
+cfg.value_loss_scale = 2.0
+cfg.kl_threshold = 0
+cfg.rewards_shaper = lambda rewards, *args, **kwargs: rewards * 0.1
+cfg.time_limit_bootstrap = False
+cfg.mixed_precision = False
 # logging to TensorBoard and write checkpoints (in timesteps)
-cfg["experiment"]["write_interval"] = "auto" if not args.eval else 0
-cfg["experiment"]["checkpoint_interval"] = "auto" if not args.eval else 0
-cfg["experiment"]["directory"] = f"runs/torch/{task_name}"
+cfg.experiment.write_interval = "auto" if not args.eval else 0
+cfg.experiment.checkpoint_interval = "auto" if not args.eval else 0
+cfg.experiment.directory = f"runs/torch/{task_name}"
 
 agent = PPO(
     models=models,
