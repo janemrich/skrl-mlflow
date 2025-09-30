@@ -122,6 +122,7 @@ class Memory(ABC):
         *,
         size: Union[int, Sequence[int], gymnasium.Space, None],
         dtype: Optional[torch.dtype] = None,
+        keep_dimensions: bool = False,
     ) -> bool:
         """Create a new internal tensor in memory.
 
