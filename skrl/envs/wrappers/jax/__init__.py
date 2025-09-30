@@ -121,8 +121,6 @@ def wrap_env(
             return "isaacgym-preview2"
         elif _in("brax.envs..*", base_classes):
             return "brax"
-        elif _in("robosuite.environments.", base_classes):
-            return "robosuite"
         elif _in("dm_env..*", base_classes):
             return "dm"
         elif _in("pettingzoo.utils.env", base_classes) or _in("pettingzoo.utils.wrappers", base_classes):

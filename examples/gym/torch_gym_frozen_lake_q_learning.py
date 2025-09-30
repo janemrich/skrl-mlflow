@@ -7,7 +7,7 @@ import torch.nn as nn
 
 # import the skrl components to build the RL system
 from skrl import logger
-from skrl.agents.torch.q_learning import Q_LEARNING, Q_LEARNING_DEFAULT_CONFIG
+from skrl.agents.torch.q_learning import Q_LEARNING, Q_LEARNING_CFG
 from skrl.envs.wrappers.torch import wrap_env
 from skrl.models.torch import Model, TabularMixin
 from skrl.trainers.torch import SequentialTrainer
@@ -75,13 +75,13 @@ models["policy"] = EpsilonGreedyPolicy(env.observation_space, env.state_space, e
 
 # configure and instantiate the agent (visit its documentation to see all the options)
 # https://skrl.readthedocs.io/en/latest/api/agents/q_learning.html#configuration-and-hyperparameters
-cfg = Q_LEARNING_DEFAULT_CONFIG.copy()
-cfg["discount_factor"] = 0.999
-cfg["alpha"] = 0.4
+cfg = Q_LEARNING_CFG()
+cfg.discount_factor = 0.999
+cfg.alpha = 0.4
 # logging to TensorBoard and write checkpoints (in timesteps)
-cfg["experiment"]["write_interval"] = "auto" if not args.eval else 0
-cfg["experiment"]["checkpoint_interval"] = "auto" if not args.eval else 0
-cfg["experiment"]["directory"] = f"runs/torch/{task_name}"
+cfg.experiment.write_interval = "auto" if not args.eval else 0
+cfg.experiment.checkpoint_interval = "auto" if not args.eval else 0
+cfg.experiment.directory = f"runs/torch/{task_name}"
 
 agent = Q_LEARNING(
     models=models,

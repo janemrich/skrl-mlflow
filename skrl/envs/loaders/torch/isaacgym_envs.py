@@ -56,6 +56,7 @@ def _print_cfg(d, indent=0) -> None:
 
 
 def load_isaacgym_env_preview2(
+    *,
     task_name: str = "",
     num_envs: Optional[int] = None,
     headless: Optional[bool] = None,
@@ -190,6 +191,7 @@ def load_isaacgym_env_preview2(
 
 
 def load_isaacgym_env_preview3(
+    *,
     task_name: str = "",
     num_envs: Optional[int] = None,
     headless: Optional[bool] = None,
@@ -354,6 +356,7 @@ def load_isaacgym_env_preview3(
 
 
 def load_isaacgym_env_preview4(
+    *,
     task_name: str = "",
     num_envs: Optional[int] = None,
     headless: Optional[bool] = None,
@@ -384,4 +387,11 @@ def load_isaacgym_env_preview4(
     :raises ValueError: The task name has not been defined, neither by the function parameter nor by the command line arguments.
     :raises RuntimeError: The ``isaacgymenvs`` package is not installed or the path is wrong.
     """
-    return load_isaacgym_env_preview3(task_name, num_envs, headless, cli_args, isaacgymenvs_path, show_cfg)
+    return load_isaacgym_env_preview3(
+        task_name=task_name,
+        num_envs=num_envs,
+        headless=headless,
+        cli_args=cli_args,
+        isaacgymenvs_path=isaacgymenvs_path,
+        show_cfg=show_cfg,
+    )

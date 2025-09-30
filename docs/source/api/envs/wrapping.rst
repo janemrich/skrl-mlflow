@@ -13,7 +13,6 @@ This library works with a common API to interact with the following RL environme
 * Farama `Gymnasium <https://gymnasium.farama.org/>`_ and `Shimmy <https://shimmy.farama.org/>`_
 * Google `DeepMind <https://github.com/deepmind/dm_env>`_ and `Brax <https://github.com/google/brax>`_
 * NVIDIA `Isaac Lab <https://isaac-sim.github.io/IsaacLab/index.html>`_ (as well as `Isaac Gym <https://developer.nvidia.com/isaac-gym>`_ (preview 2, 3 and 4) and `Omniverse Isaac Gym <https://github.com/isaac-sim/OmniIsaacGymEnvs>`_)
-* `robosuite <https://robosuite.ai/>`_
 
 To operate with them and to support interoperability between these non-compatible interfaces, a **wrapping mechanism is provided** as shown in the diagram below
 
@@ -318,24 +317,6 @@ Usage
             ..         :start-after: [jax-start-deepmind]
             ..         :end-before: [jax-end-deepmind]
 
-    .. tab:: robosuite
-
-        .. tabs::
-
-            .. group-tab:: |_4| |pytorch| |_4|
-
-                .. literalinclude:: ../../snippets/wrapping.py
-                    :language: python
-                    :start-after: [pytorch-start-robosuite]
-                    :end-before: [pytorch-end-robosuite]
-
-            .. .. group-tab:: |_4| |jax| |_4|
-
-            ..     .. literalinclude:: ../../snippets/wrapping.py
-            ..         :language: python
-            ..         :start-after: [jax-start-robosuite]
-            ..         :end-before: [jax-end-robosuite]
-
 .. raw:: html
 
     <br>
@@ -405,12 +386,6 @@ Internal API (PyTorch)
 .. autoclass:: skrl.envs.wrappers.torch.BraxWrapper
     :undoc-members:
     :show-inheritance:
-    :members:
-
-.. autoclass:: skrl.envs.wrappers.torch.RobosuiteWrapper
-    :undoc-members:
-    :show-inheritance:
-    :private-members: _spec_to_space, _observation_to_tensor, _tensor_to_action
     :members:
 
 .. raw:: html

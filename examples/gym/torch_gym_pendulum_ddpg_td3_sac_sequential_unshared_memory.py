@@ -7,9 +7,9 @@ import torch.nn as nn
 
 # import the skrl components to build the RL system
 from skrl import logger
-from skrl.agents.torch.ddpg import DDPG, DDPG_DEFAULT_CONFIG
-from skrl.agents.torch.sac import SAC, SAC_DEFAULT_CONFIG
-from skrl.agents.torch.td3 import TD3, TD3_DEFAULT_CONFIG
+from skrl.agents.torch.ddpg import DDPG, DDPG_CFG
+from skrl.agents.torch.sac import SAC, SAC_CFG
+from skrl.agents.torch.td3 import TD3, TD3_CFG
 from skrl.envs.wrappers.torch import wrap_env
 from skrl.memories.torch import RandomMemory
 from skrl.models.torch import DeterministicMixin, GaussianMixin, Model
@@ -169,44 +169,46 @@ if __name__ == "__main__":
 
     # configure and instantiate the agents (visit their documentation to see all the options)
     # https://skrl.readthedocs.io/en/latest/api/agents/ddpg.html#configuration-and-hyperparameters
-    cfg_ddpg = DDPG_DEFAULT_CONFIG.copy()
-    cfg_ddpg["exploration"]["noise"] = OrnsteinUhlenbeckNoise
-    cfg_ddpg["exploration"]["noise_kwargs"] = {"theta": 0.15, "sigma": 0.1, "base_scale": 1.0, "device": device}
-    cfg_ddpg["batch_size"] = 100
-    cfg_ddpg["random_timesteps"] = 100
-    cfg_ddpg["learning_starts"] = 100
+    cfg_ddpg = DDPG_CFG()
+    cfg_ddpg.exploration_noise = OrnsteinUhlenbeckNoise
+    cfg_ddpg.exploration_noise_kwargs = {"theta": 0.15, "sigma": 0.1, "base_scale": 1.0, "device": device}
+    cfg_ddpg.exploration_scheduler = lambda timestep, timesteps: max(1 - timestep / timesteps, 1e-2)
+    cfg_ddpg.batch_size = 100
+    cfg_ddpg.random_timesteps = 100
+    cfg_ddpg.learning_starts = 100
     # logging to TensorBoard and write checkpoints (in timesteps)
-    cfg_ddpg["experiment"]["write_interval"] = "auto" if not args.eval else 0
-    cfg_ddpg["experiment"]["checkpoint_interval"] = "auto" if not args.eval else 0
-    cfg_ddpg["experiment"]["directory"] = f"runs/torch/{task_name}-DDPG"
+    cfg_ddpg.experiment.write_interval = "auto" if not args.eval else 0
+    cfg_ddpg.experiment.checkpoint_interval = "auto" if not args.eval else 0
+    cfg_ddpg.experiment.directory = f"runs/torch/{task_name}-DDPG"
 
     # https://skrl.readthedocs.io/en/latest/api/agents/td3.html#configuration-and-hyperparameters
-    cfg_td3 = TD3_DEFAULT_CONFIG.copy()
-    cfg_td3["exploration"]["noise"] = GaussianNoise
-    cfg_td3["exploration"]["noise_kwargs"] = {"mean": 0.0, "std": 0.1, "device": device}
-    cfg_td3["smooth_regularization_noise"] = GaussianNoise
-    cfg_td3["smooth_regularization_noise_kwargs"] = {"mean": 0.0, "std": 0.2, "device": device}
-    cfg_td3["smooth_regularization_clip"] = 0.5
-    cfg_td3["discount_factor"] = 0.98
-    cfg_td3["batch_size"] = 100
-    cfg_td3["random_timesteps"] = 100
-    cfg_td3["learning_starts"] = 100
+    cfg_td3 = TD3_CFG()
+    cfg_td3.exploration_noise = GaussianNoise
+    cfg_td3.exploration_noise_kwargs = {"mean": 0.0, "std": 0.1, "device": device}
+    cfg_td3.exploration_scheduler = lambda timestep, timesteps: max(1 - timestep / timesteps, 1e-2)
+    cfg_td3.smooth_regularization_noise = GaussianNoise
+    cfg_td3.smooth_regularization_noise_kwargs = {"mean": 0.0, "std": 0.2, "device": device}
+    cfg_td3.smooth_regularization_clip = 0.5
+    cfg_td3.discount_factor = 0.98
+    cfg_td3.batch_size = 100
+    cfg_td3.random_timesteps = 100
+    cfg_td3.learning_starts = 100
     # logging to TensorBoard and write checkpoints (in timesteps)
-    cfg_td3["experiment"]["write_interval"] = "auto" if not args.eval else 0
-    cfg_td3["experiment"]["checkpoint_interval"] = "auto" if not args.eval else 0
-    cfg_td3["experiment"]["directory"] = f"runs/torch/{task_name}-TD3"
+    cfg_td3.experiment.write_interval = "auto" if not args.eval else 0
+    cfg_td3.experiment.checkpoint_interval = "auto" if not args.eval else 0
+    cfg_td3.experiment.directory = f"runs/torch/{task_name}-TD3"
 
     # https://skrl.readthedocs.io/en/latest/api/agents/sac.html#configuration-and-hyperparameters
-    cfg_sac = SAC_DEFAULT_CONFIG.copy()
-    cfg_sac["discount_factor"] = 0.98
-    cfg_sac["batch_size"] = 100
-    cfg_sac["random_timesteps"] = 0
-    cfg_sac["learning_starts"] = 100
-    cfg_sac["learn_entropy"] = True
+    cfg_sac = SAC_CFG()
+    cfg_sac.discount_factor = 0.98
+    cfg_sac.batch_size = 100
+    cfg_sac.random_timesteps = 0
+    cfg_sac.learning_starts = 100
+    cfg_sac.learn_entropy = True
     # logging to TensorBoard and write checkpoints (in timesteps)
-    cfg_sac["experiment"]["write_interval"] = "auto" if not args.eval else 0
-    cfg_sac["experiment"]["checkpoint_interval"] = "auto" if not args.eval else 0
-    cfg_sac["experiment"]["directory"] = f"runs/torch/{task_name}-SAC"
+    cfg_sac.experiment.write_interval = "auto" if not args.eval else 0
+    cfg_sac.experiment.checkpoint_interval = "auto" if not args.eval else 0
+    cfg_sac.experiment.directory = f"runs/torch/{task_name}-SAC"
 
     agent_ddpg = DDPG(
         models=models_ddpg,

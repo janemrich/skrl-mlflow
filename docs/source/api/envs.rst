@@ -69,9 +69,6 @@ In addition, you will be able to :doc:`wrap single-agent <envs/wrapping>` and :d
     * - PettingZoo
       - .. centered:: :math:`\blacksquare`
       - .. centered:: :math:`\blacksquare`
-    * - robosuite
-      - .. centered:: :math:`\blacksquare`
-      - .. centered:: :math:`\square`
     * - Shimmy
       - .. centered:: :math:`\blacksquare`
       - .. centered:: :math:`\blacksquare`

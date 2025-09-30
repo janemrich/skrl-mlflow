@@ -7,7 +7,7 @@ import jax.numpy as jnp
 
 # import the skrl components to build the RL system
 from skrl import config, logger
-from skrl.agents.jax.sac import SAC, SAC_DEFAULT_CONFIG
+from skrl.agents.jax.sac import SAC, SAC_CFG
 from skrl.envs.wrappers.jax import wrap_env
 from skrl.memories.jax import RandomMemory
 from skrl.models.jax import DeterministicMixin, GaussianMixin, Model
@@ -134,16 +134,16 @@ for model in models.values():
 
 # configure and instantiate the agent (visit its documentation to see all the options)
 # https://skrl.readthedocs.io/en/latest/api/agents/sac.html#configuration-and-hyperparameters
-cfg = SAC_DEFAULT_CONFIG.copy()
-cfg["discount_factor"] = 0.98
-cfg["batch_size"] = 100
-cfg["random_timesteps"] = 0
-cfg["learning_starts"] = 100
-cfg["learn_entropy"] = True
+cfg = SAC_CFG()
+cfg.discount_factor = 0.98
+cfg.batch_size = 100
+cfg.random_timesteps = 0
+cfg.learning_starts = 100
+cfg.learn_entropy = True
 # logging to TensorBoard and write checkpoints (in timesteps)
-cfg["experiment"]["write_interval"] = "auto" if not args.eval else 0
-cfg["experiment"]["checkpoint_interval"] = "auto" if not args.eval else 0
-cfg["experiment"]["directory"] = f"runs/jax/{task_name}"
+cfg.experiment.write_interval = "auto" if not args.eval else 0
+cfg.experiment.checkpoint_interval = "auto" if not args.eval else 0
+cfg.experiment.directory = f"runs/jax/{task_name}"
 
 agent = SAC(
     models=models,
