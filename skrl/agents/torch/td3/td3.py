@@ -188,7 +188,7 @@ class TD3(Agent):
             self.clip_actions_max = torch.tensor(self.action_space.high, device=self.device)
 
         # create temporary variables needed for storage and computation
-        self._critic_update_counter = 0
+        self._update_counter = 0
 
     def act(
         self, observations: torch.Tensor, states: Union[torch.Tensor, None], *, timestep: int, timesteps: int
@@ -395,8 +395,8 @@ class TD3(Agent):
             self.scaler.step(self.critic_optimizer)
 
             # delayed update
-            self._critic_update_counter += 1
-            if not self._critic_update_counter % self.cfg.policy_delay:
+            self._update_counter += 1
+            if not self._update_counter % self.cfg.policy_delay:
 
                 with torch.autocast(device_type=self._device_type, enabled=self.cfg.mixed_precision):
                     # compute policy (actor) loss
@@ -432,7 +432,7 @@ class TD3(Agent):
                 self.critic_scheduler.step()
 
             # record data
-            if not self._critic_update_counter % self.cfg.policy_delay:
+            if not self._update_counter % self.cfg.policy_delay:
                 self.track_data("Loss / Policy loss", policy_loss.item())
             self.track_data("Loss / Critic loss", critic_loss.item())
 

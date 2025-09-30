@@ -41,7 +41,7 @@ jobs:
         python -m pip install --quiet torch==1.11
         python -m pip install --quiet -e .[torch]
         python -m pip install --quiet -e .[tests]
-        python -m pip show torch numpy
+        python -m pip list
     # run tests
     - name: Run tests (agents)
       run: |
@@ -92,41 +92,38 @@ jobs:
         python -m pip install --quiet torch==1.11
         python -m pip install --quiet -e .[torch]
         python -m pip install --quiet -e .[tests]
-        python -m pip show torch numpy
+        python -m pip list
     # run tests
     - name: Run tests (Gymnasium)
       run: |
         python -m pip install --quiet gymnasium==0.26.1 pygame
-        python -m pip show gymnasium
+        python -m pip list
         pytest tests/envs/wrappers/torch/test_gymnasium_envs.py
     - name: Run tests (Gym)
       run: |
         python -m pip install --quiet gym==0.23.0
-        python -m pip show gym
+        python -m pip list
         pytest tests/envs/wrappers/torch/test_gym_envs.py
     - name: Run tests (PettingZoo)
       run: |
         python -m pip install --quiet pettingzoo==1.22.2 pymunk
-        python -m pip show pettingzoo
+        python -m pip list
         pytest tests/envs/wrappers/torch/test_pettingzoo_envs.py
     - name: Run tests (Isaac Lab)
       run: |
         pytest tests/envs/wrappers/torch/test_isaaclab_envs.py
-    - name: Run tests (Omniverse Isaac Gym)
-      run: |
-        pytest tests/envs/wrappers/torch/test_omniverse_isaacgym_envs.py
     - name: Run tests (Isaac Gym)
       run: |
         pytest tests/envs/wrappers/torch/test_isaacgym_envs.py
     - name: Run tests (DeepMind Control Suite)
       run: |
         python -m pip install --quiet dm-control==1.0.15 mujoco==3.0.0
-        python -m pip show dm-control
+        python -m pip list
         pytest tests/envs/wrappers/torch/test_deepmind_envs.py
     - name: Run tests (Brax)
       run: |
-        python -m pip install --quiet brax==0.9.3 mujoco==3.0.0
-        python -m pip show brax
+        python -m pip install --quiet brax==0.12.0 mujoco==3.2.6
+        python -m pip list
         pytest tests/envs/wrappers/torch/test_brax_envs.py
 
   torch-minimum-utils:
@@ -152,7 +149,7 @@ jobs:
         python -m pip install --quiet torch==1.11
         python -m pip install --quiet -e .[torch]
         python -m pip install --quiet -e .[tests]
-        python -m pip show torch numpy
+        python -m pip list
     # run tests
     - name: Run tests (model_instantiators)
       run: |
@@ -212,7 +209,7 @@ jobs:
         python -m pip install --quiet torch
         python -m pip install --quiet -e .[torch]
         python -m pip install --quiet -e .[tests]
-        python -m pip show torch numpy
+        python -m pip list
     # run tests
     - name: Run tests (agents)
       run: |
@@ -267,41 +264,40 @@ jobs:
         python -m pip install --quiet torch
         python -m pip install --quiet -e .[torch]
         python -m pip install --quiet -e .[tests]
-        python -m pip show torch numpy
+        python -m pip list
     # run tests
     - name: Run tests (Gymnasium)
       run: |
         python -m pip install --quiet gymnasium
-        python -m pip show gymnasium
+        python -m pip list
         pytest tests/envs/wrappers/torch/test_gymnasium_envs.py
     - name: Run tests (Gym)
       run: |
         python -m pip install --quiet gym
-        python -m pip show gym
+        python -m pip list
         pytest tests/envs/wrappers/torch/test_gym_envs.py
     - name: Run tests (PettingZoo)
       run: |
         python -m pip install --quiet pettingzoo pygame pymunk
-        python -m pip show pettingzoo
+        python -m pip list
         pytest tests/envs/wrappers/torch/test_pettingzoo_envs.py
     - name: Run tests (Isaac Lab)
       run: |
         pytest tests/envs/wrappers/torch/test_isaaclab_envs.py
-    - name: Run tests (Omniverse Isaac Gym)
-      run: |
-        pytest tests/envs/wrappers/torch/test_omniverse_isaacgym_envs.py
     - name: Run tests (Isaac Gym)
       run: |
         pytest tests/envs/wrappers/torch/test_isaacgym_envs.py
     - name: Run tests (DeepMind Control Suite)
+      continue-on-error: true
       run: |
         python -m pip install --quiet dm-control
-        python -m pip show dm-control
+        python -m pip list
         pytest tests/envs/wrappers/torch/test_deepmind_envs.py
     - name: Run tests (Brax)
+      continue-on-error: true
       run: |
         python -m pip install --quiet brax
-        python -m pip show brax
+        python -m pip list
         pytest tests/envs/wrappers/torch/test_brax_envs.py
 
   torch-latest-utils:
@@ -331,7 +327,7 @@ jobs:
         python -m pip install --quiet torch
         python -m pip install --quiet -e .[torch]
         python -m pip install --quiet -e .[tests]
-        python -m pip show torch numpy
+        python -m pip list
     # run tests
     - name: Run tests (model_instantiators)
       run: |

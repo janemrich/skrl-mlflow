@@ -7,8 +7,8 @@ import gymnasium
 
 import torch
 
-from skrl.agents.torch.dqn import DDQN as Agent
-from skrl.agents.torch.dqn import DDQN_CFG as AgentCfg
+from skrl.agents.torch.ddqn import DDQN as Agent
+from skrl.agents.torch.ddqn import DDQN_CFG as AgentCfg
 from skrl.memories.torch import RandomMemory
 from skrl.resources.preprocessors.torch import RunningStandardScaler
 from skrl.resources.schedulers.torch import KLAdaptiveLR

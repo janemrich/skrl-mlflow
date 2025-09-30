@@ -108,8 +108,8 @@ Configuration and hyperparameters
       - .. centered:: |_4| |pytorch| |_4|
       - .. centered:: |_4| |jax| |_4|
     * - ``DDQN_CFG``
-      - :py:class:`~skrl.agents.torch.dqn.DDQN_CFG`
-      - :py:class:`~skrl.agents.jax.dqn.DDQN_CFG`
+      - :py:class:`~skrl.agents.torch.ddqn.DDQN_CFG`
+      - :py:class:`~skrl.agents.jax.ddqn.DDQN_CFG`
 
 .. raw:: html
 
@@ -210,12 +210,12 @@ Support for advanced features is described in the next table
 API (PyTorch)
 -------------
 
-.. autoclass:: skrl.agents.torch.dqn.DDQN_CFG
+.. autoclass:: skrl.agents.torch.ddqn.DDQN_CFG
     :show-inheritance:
     :inherited-members:
     :members:
 
-.. autoclass:: skrl.agents.torch.dqn.DDQN
+.. autoclass:: skrl.agents.torch.ddqn.DDQN
     :undoc-members:
     :show-inheritance:
     :private-members: _update
@@ -228,12 +228,12 @@ API (PyTorch)
 API (JAX)
 ---------
 
-.. autoclass:: skrl.agents.jax.dqn.DDQN_CFG
+.. autoclass:: skrl.agents.jax.ddqn.DDQN_CFG
     :show-inheritance:
     :inherited-members:
     :members:
 
-.. autoclass:: skrl.agents.jax.dqn.DDQN
+.. autoclass:: skrl.agents.jax.ddqn.DDQN
     :undoc-members:
     :show-inheritance:
     :private-members: _update

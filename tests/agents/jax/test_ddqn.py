@@ -7,8 +7,8 @@ import gymnasium
 
 import optax
 
-from skrl.agents.jax.dqn import DDQN as Agent
-from skrl.agents.jax.dqn import DDQN_CFG as AgentCfg
+from skrl.agents.jax.ddqn import DDQN as Agent
+from skrl.agents.jax.ddqn import DDQN_CFG as AgentCfg
 from skrl.memories.jax import RandomMemory
 from skrl.resources.preprocessors.jax import RunningStandardScaler
 from skrl.resources.schedulers.jax import KLAdaptiveLR

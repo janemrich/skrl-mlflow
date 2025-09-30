@@ -140,6 +140,9 @@ class DDQN(Agent):
             "truncated",
         ]
 
+        # create temporary variables needed for storage and computation
+        self._update_counter = 0
+
     def act(
         self, observations: torch.Tensor, states: Union[torch.Tensor, None], *, timestep: int, timesteps: int
     ) -> Tuple[torch.Tensor, Mapping[str, Union[torch.Tensor, Any]]]:
@@ -329,7 +332,8 @@ class DDQN(Agent):
             self.scaler.update()
 
             # update target network
-            if not timestep % self.cfg.target_update_interval:
+            self._update_counter += 1
+            if not self._update_counter % self.cfg.target_update_interval:
                 self.target_q_network.update_parameters(self.q_network, polyak=self.cfg.polyak)
 
             # update learning rate
