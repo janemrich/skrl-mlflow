@@ -40,11 +40,11 @@ function run_scripts() {
     echo "  |-- Running '$example' scripts..."
     # change CWD to example folder
     cd "$example"
-    # create result files
+    # create/clean result files and runs
     echo "execution_code,duration,file" > result-stats.txt
     echo "" > result-errors.txt
-    # create temporary files for stdout and stderr
-    stdout_file=$(mktemp)
+    rm -rf runs/*
+    # create temporary files to capture stdout/stderr
     stderr_file=$(mktemp)
     # run scripts
     for framework in "${frameworks[@]}"; do
@@ -52,7 +52,7 @@ function run_scripts() {
             if [ -f "$file" ]; then
                 echo "  |     |-- Running '$file'..."
                 start=$(date +%s.%N)
-                $python_executable $file --headless >"$stdout_file" 2>"$stderr_file"
+                $python_executable $file --headless > /dev/null 2>"$stderr_file"
                 result=$?  # get execution code (success: 0)
                 end=$(date +%s.%N)
                 # log data (execution code, duration, file)
@@ -60,13 +60,12 @@ function run_scripts() {
                 echo "$result,$duration,$file" >> result-stats.txt
                 # log errors, if any
                 if [ $result -ne 0 ]; then
-                    stdout=$(<"$stdout_file")
                     stderr=$(<"$stderr_file")
                     echo -e "\n$file" >> result-errors.txt
                     echo "$stderr" >> result-errors.txt
                 fi
                 # remove temporary files
-                rm "$stdout_file" "$stderr_file"
+                rm "$stderr_file"
             fi
         done
     done
