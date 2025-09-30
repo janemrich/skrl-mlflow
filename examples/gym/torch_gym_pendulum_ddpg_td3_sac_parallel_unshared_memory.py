@@ -116,6 +116,12 @@ class Critic(DeterministicMixin, Model):
         return x, {}
 
 
+# define exploration scheduler as a function that can be pickled by multiprocessing since
+# lambda functions cannot be pickled: _pickle.PicklingError: Can't pickle <function <lambda> at 0x...>
+def exploration_scheduler(timestep, timesteps):
+    return max(1 - timestep / timesteps, 1e-2)
+
+
 if __name__ == "__main__":
 
     # load the environment (note: the environment version may change depending on the gym version)
@@ -172,7 +178,7 @@ if __name__ == "__main__":
     cfg_ddpg = DDPG_CFG()
     cfg_ddpg.exploration_noise = OrnsteinUhlenbeckNoise
     cfg_ddpg.exploration_noise_kwargs = {"theta": 0.15, "sigma": 0.1, "base_scale": 1.0, "device": device}
-    cfg_ddpg.exploration_scheduler = lambda timestep, timesteps: max(1 - timestep / timesteps, 1e-2)
+    cfg_ddpg.exploration_scheduler = exploration_scheduler
     cfg_ddpg.batch_size = 100
     cfg_ddpg.random_timesteps = 100
     cfg_ddpg.learning_starts = 100
@@ -185,7 +191,7 @@ if __name__ == "__main__":
     cfg_td3 = TD3_CFG()
     cfg_td3.exploration_noise = GaussianNoise
     cfg_td3.exploration_noise_kwargs = {"mean": 0.0, "std": 0.1, "device": device}
-    cfg_td3.exploration_scheduler = lambda timestep, timesteps: max(1 - timestep / timesteps, 1e-2)
+    cfg_td3.exploration_scheduler = exploration_scheduler
     cfg_td3.smooth_regularization_noise = GaussianNoise
     cfg_td3.smooth_regularization_noise_kwargs = {"mean": 0.0, "std": 0.2, "device": device}
     cfg_td3.smooth_regularization_clip = 0.5
