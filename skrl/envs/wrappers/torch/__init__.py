@@ -28,7 +28,6 @@ def wrap_env(
         "isaaclab",
         "isaaclab-single-agent",
         "isaacgym-preview4",
-        "robosuite",
         "pettingzoo",
         "isaaclab-multi-agent",
         "bidexhands",
@@ -66,8 +65,6 @@ def wrap_env(
                 - ``"isaaclab"`` (``"isaaclab-single-agent"``)
             * - Isaac Gym preview 4
                 - ``"isaacgym-preview4"``
-            * - Robosuite
-                - ``"robosuite"``
 
         .. list-table:: Multi-agent environments |br|
             :header-rows: 1

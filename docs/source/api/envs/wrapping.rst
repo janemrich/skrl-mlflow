@@ -13,7 +13,6 @@ This library works with a common API to interact with the following RL environme
 * Farama `Gymnasium <https://gymnasium.farama.org/>`_ and `Shimmy <https://shimmy.farama.org/>`_
 * Google `DeepMind <https://github.com/deepmind/dm_env>`_ and `Brax <https://github.com/google/brax>`_
 * NVIDIA `Isaac Lab <https://isaac-sim.github.io/IsaacLab/index.html>`_ (and `Isaac Gym <https://developer.nvidia.com/isaac-gym>`_ preview 4)
-* `robosuite <https://robosuite.ai/>`_
 
 To operate with them and to support interoperability between these non-compatible interfaces, a **wrapping mechanism is provided** as shown in the diagram below
 
