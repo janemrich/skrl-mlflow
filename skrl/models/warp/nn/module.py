@@ -38,16 +38,16 @@ class Module(ABC):
                 destination[prefix + name] = param
 
     def forward(self, *args):
-        raise NotImplementedError(f'Module [{type(self).__name__}] is missing the required "forward" function')
+        raise NotImplementedError(f'Module [{type(self).__name__}] is missing the required "forward" method')
 
     def register_parameter(self, name: str, param: Optional[wp.array]) -> None:
         self._parameters[name] = param
 
     def register_module(self, name: str, module: Optional["Module"]) -> None:
         if not isinstance(module, Module):
-            raise TypeError(f"{type(module)} is not a Module subclass")
+            raise TypeError(f"Class {type(module)} is not a Module subclass")
         if name in self._modules:
-            raise KeyError(f"name '{name}' already exists")
+            raise KeyError(f"Module with name '{name}' already exists")
         self._modules[name] = module
 
     def parameters(self) -> Iterator[Optional[wp.array]]:
