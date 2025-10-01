@@ -121,10 +121,9 @@ def load_isaaclab_env(
     sys.argv += cli_args
 
     # parse arguments
-    if parser is None:
-        parser = argparse.ArgumentParser("Isaac Lab: Omniverse Robotics Environments!")
-    parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate")
-    parser.add_argument("--task", type=str, default=None, help="Name of the task")
+    parser = argparse.ArgumentParser("Isaac Lab")
+    parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
+    parser.add_argument("--task", type=str, default=None, help="Name of the task.")
     parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
     parser.add_argument(
         "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
