@@ -4,6 +4,11 @@ import gymnasium
 
 import warp as wp
 
+
+try:
+    import torch
+except:
+    pass  # TODO: show warning message
 from skrl.envs.wrappers.warp.base import Wrapper
 from skrl.utils.spaces.warp import flatten_tensorized_space, tensorize_space, unflatten_tensorized_space
 
@@ -57,7 +62,8 @@ class IsaacLabWrapper(Wrapper):
         :return: Observation, reward, terminated, truncated, info.
         """
         actions = unflatten_tensorized_space(self.action_space, actions)
-        observations, reward, terminated, truncated, self._info = self._env.step(wp.to_torch(actions))
+        with torch.no_grad():
+            observations, reward, terminated, truncated, self._info = self._env.step(wp.to_torch(actions))
         self._observations = flatten_tensorized_space(
             tensorize_space(self.observation_space, wp.from_torch(observations["policy"]))
         )
