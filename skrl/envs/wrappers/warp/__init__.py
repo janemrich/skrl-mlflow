@@ -22,7 +22,6 @@ def wrap_env(
         "isaaclab",
         "isaaclab-single-agent",
         "isaacgym-preview4",
-        "robosuite",
         "pettingzoo",
         "isaaclab-multi-agent",
         "bidexhands",
