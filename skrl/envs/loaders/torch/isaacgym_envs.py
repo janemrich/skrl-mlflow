@@ -53,6 +53,7 @@ def _print_cfg(d, indent=0) -> None:
 
 
 def load_isaacgym_env_preview4(
+    *,
     task_name: str = "",
     num_envs: Optional[int] = None,
     headless: Optional[bool] = None,
