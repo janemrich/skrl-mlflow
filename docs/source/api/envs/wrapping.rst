@@ -12,12 +12,7 @@ This library works with a common API to interact with the following RL environme
 * OpenAI `Gym <https://www.gymlibrary.dev>`_
 * Farama `Gymnasium <https://gymnasium.farama.org/>`_ and `Shimmy <https://shimmy.farama.org/>`_
 * Google `DeepMind <https://github.com/deepmind/dm_env>`_ and `Brax <https://github.com/google/brax>`_
-<<<<<<<<< Temporary merge branch 1
-* NVIDIA `Isaac Lab <https://isaac-sim.github.io/IsaacLab/index.html>`_ (as well as `Isaac Gym <https://developer.nvidia.com/isaac-gym>`_ (preview 2, 3 and 4) and `Omniverse Isaac Gym <https://github.com/isaac-sim/OmniIsaacGymEnvs>`_)
-=========
 * NVIDIA `Isaac Lab <https://isaac-sim.github.io/IsaacLab/index.html>`_ (and `Isaac Gym <https://developer.nvidia.com/isaac-gym>`_ preview 4)
-* `robosuite <https://robosuite.ai/>`_
->>>>>>>>> Temporary merge branch 2
 
 To operate with them and to support interoperability between these non-compatible interfaces, a **wrapping mechanism is provided** as shown in the diagram below
 
