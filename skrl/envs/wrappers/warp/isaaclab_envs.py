@@ -108,3 +108,8 @@ class IsaacLabWrapper(Wrapper):
     def close(self) -> None:
         """Close the environment."""
         self._env.close()
+
+
+class IsaacLabMultiAgentWrapper:
+    def __init__(self, env: Any) -> None:
+        raise NotImplementedError
