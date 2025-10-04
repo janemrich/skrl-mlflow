@@ -3,7 +3,7 @@ from typing import List
 import warp as wp
 
 
-__all__ = ["clamp", "concatenate", "convert_to_numpy_in_place"]
+__all__ = ["clamp", "concatenate", "convert_to_numpy_in_place", "type_cast"]
 
 
 @wp.kernel
@@ -61,3 +61,38 @@ def convert_to_numpy_in_place(src):
     elif isinstance(src, wp.array):
         return src.numpy()
     return src
+
+
+def type_cast(array: wp.array, dtype: type) -> wp.array:
+    if array.dtype == dtype:
+        return array
+    output = wp.empty(array.shape, dtype=dtype, device=array.device, requires_grad=array.requires_grad)
+    wp.launch(_TYPE_CAST[array.ndim], dim=array.shape, inputs=[array], outputs=[output], device=array.device)
+    return output
+
+
+@wp.kernel(enable_backward=False)
+def _type_cast_1d(src: wp.array(ndim=1), dst: wp.array(ndim=1)):
+    i = wp.tid()
+    dst[i] = dst.dtype(src[i])
+
+
+@wp.kernel(enable_backward=False)
+def _type_cast_2d(src: wp.array(ndim=2), dst: wp.array(ndim=2)):
+    i, j = wp.tid()
+    dst[i, j] = dst.dtype(src[i, j])
+
+
+@wp.kernel(enable_backward=False)
+def _type_cast_3d(src: wp.array(ndim=3), dst: wp.array(ndim=3)):
+    i, j, k = wp.tid()
+    dst[i, j, k] = dst.dtype(src[i, j, k])
+
+
+@wp.kernel(enable_backward=False)
+def _type_cast_4d(src: wp.array(ndim=4), dst: wp.array(ndim=4)):
+    i, j, k, l = wp.tid()
+    dst[i, j, k, l] = dst.dtype(src[i, j, k, l])
+
+
+_TYPE_CAST = [None, _type_cast_1d, _type_cast_2d, _type_cast_3d, _type_cast_4d]

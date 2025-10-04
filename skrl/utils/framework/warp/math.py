@@ -6,7 +6,20 @@ import numpy as np
 import warp as wp
 
 
-__all__ = ["scalar_mul", "mean", "var", "std"]
+__all__ = [
+    "scalar_mul",
+    "elu",
+    "leaky_relu",
+    "relu",
+    "selu",
+    "sigmoid",
+    "softplus",
+    "softsign",
+    "tanh",
+    "mean",
+    "var",
+    "std",
+]
 
 
 def scalar_mul(array: wp.array, scalar: Union[int, float], inplace: bool = False) -> wp.array:

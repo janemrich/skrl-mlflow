@@ -11,6 +11,9 @@ class Sequential(Module):
         for i, module in enumerate(modules):
             self.register_module(str(i), module)
 
+    def __len__(self):
+        return len(self.modules())
+
     def forward(self, input):
         for module in self.modules():
             input = module(input)

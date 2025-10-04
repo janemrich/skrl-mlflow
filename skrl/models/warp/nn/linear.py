@@ -117,3 +117,16 @@ class Linear(Module):
             block_dim=block_dim,
         )
         return output
+
+
+class LazyLinear(Linear):
+    def __init__(self, out_features: int, bias: bool = True):
+        super().__init__(1, out_features, bias)
+        self._initialized = False
+
+    def forward(self, input: wp.array) -> wp.array:
+        if not self._initialized:
+            in_features = input.shape[0] if nn_transposed_computation else input.shape[1]
+            super().__init__(in_features, self.out_features, self.bias)
+            self._initialized = True
+        return super().forward(input)
