@@ -12,24 +12,14 @@ class _Parameter(ABC):
 
 
 class Module(ABC):
-    _parameters: Mapping[str, Optional[wp.array]]
-    _modules: Mapping[str, Optional["Module"]]
-
     def __init__(self, *args, **kwargs):
-        self.__dict__["_attrs"] = OrderedDict()
-        super().__setattr__("_parameters", OrderedDict())
-        super().__setattr__("_modules", OrderedDict())
+        self._parameters = OrderedDict()
+        self._modules = OrderedDict()
 
         self.device = wp.get_device("cuda")
 
-    def __setattr__(self, key, value):
-        self._attrs[key] = value
-
-    def __getattr__(self, key):
-        return self._attrs[key]
-
     def __post_init__(self) -> None:
-        for k, v in self._attrs.items():
+        for k, v in self.__dict__.items():
             if isinstance(v, _Parameter):
                 self.register_parameter(k, v)
             elif isinstance(v, Module):
