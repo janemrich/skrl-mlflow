@@ -5,6 +5,7 @@ import warp as wp
 
 from .config import block_dim, nn_transposed_computation, tiles_dim_0, tiles_dim_1, tiles_dim_2
 from .module import Module
+from .parameter import Parameter
 
 
 def create_kernel(in_features: int, out_features: int, transposed: bool):
@@ -68,16 +69,14 @@ class Linear(Module):
         self.out_features = out_features
         # create/register parameters
         # - weight
-        self.weight = wp.empty(
-            shape=(out_features, in_features), dtype=wp.float32, device=self.device, requires_grad=True
-        )
+        self.weight = Parameter(wp.empty(shape=(out_features, in_features), dtype=wp.float32, device=self.device))
         self.register_parameter("weight", self.weight)
         # - bias
         if bias:
-            self.bias = wp.empty(shape=(out_features, 1), dtype=wp.float32, device=self.device, requires_grad=True)
+            self.bias = Parameter(wp.empty(shape=(out_features, 1), dtype=wp.float32, device=self.device))
+            self.register_parameter("bias", self.bias)
         else:
             self.bias = None
-        self.register_parameter("bias", self.bias)
         # set default/initial values
         self.reset_parameters()
         # execution variables
@@ -86,14 +85,14 @@ class Linear(Module):
 
     def reset_parameters(self) -> None:
         # init parameters: sampling uniform(-1/sqrt(in_features), 1/sqrt(in_features)). \cite{he2015delving}
-        bound = 1 / np.sqrt(self.weight.shape[1])
+        bound = 1 / np.sqrt(self.in_features)
         # - weight
-        value = np.random.uniform(-bound, bound, size=self.weight.shape)
-        wp.copy(self.weight, wp.from_numpy(value, dtype=wp.float32))
+        value = np.random.uniform(-bound, bound, size=self.weight.data.shape)
+        wp.copy(self.weight.data, wp.from_numpy(value, dtype=wp.float32))
         # - bias
         if self.bias:
-            value = np.random.uniform(-bound, bound, size=self.bias.shape)
-            wp.copy(self.bias, wp.from_numpy(value, dtype=wp.float32))
+            value = np.random.uniform(-bound, bound, size=self.bias.data.shape)
+            wp.copy(self.bias.data, wp.from_numpy(value, dtype=wp.float32))
 
     def forward(self, input: wp.array) -> wp.array:
         shape = (
@@ -109,8 +108,8 @@ class Linear(Module):
             dim=[math.ceil(shape[0] / tiles_dim_0), math.ceil(shape[1] / tiles_dim_1)],
             inputs=[
                 input,
-                self.weight,
-                self.bias,
+                self.weight.data,
+                self.bias.data,
             ],
             outputs=[output],
             device=self.device,

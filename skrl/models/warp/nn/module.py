@@ -7,6 +7,10 @@ import numpy as np
 import warp as wp
 
 
+class _Parameter(ABC):
+    pass
+
+
 class Module(ABC):
     _parameters: Mapping[str, Optional[wp.array]]
     _modules: Mapping[str, Optional["Module"]]
@@ -26,7 +30,9 @@ class Module(ABC):
 
     def __post_init__(self) -> None:
         for k, v in self._attrs.items():
-            if isinstance(v, Module):
+            if isinstance(v, _Parameter):
+                self.register_parameter(k, v)
+            elif isinstance(v, Module):
                 self.register_module(k, v)
 
     def __call__(self, *args, **kwargs):
@@ -35,12 +41,14 @@ class Module(ABC):
     def _save_to_state_dict(self, destination, prefix):
         for name, param in self._parameters.items():
             if param is not None:
-                destination[prefix + name] = param
+                destination[prefix + name] = param.data
 
     def forward(self, *args):
         raise NotImplementedError(f'Module [{type(self).__name__}] is missing the required "forward" method')
 
     def register_parameter(self, name: str, param: Optional[wp.array]) -> None:
+        if not isinstance(param, _Parameter):
+            raise TypeError(f"Class {type(param)} is not a Parameter subclass")
         self._parameters[name] = param
 
     def register_module(self, name: str, module: Optional["Module"]) -> None:
@@ -55,9 +63,9 @@ class Module(ABC):
         if modules:
             parameters = []
             for module in modules:
-                parameters += module.parameters()
+                parameters += [p.data if isinstance(p, _Parameter) else p for p in module.parameters()]
         else:
-            parameters = self._parameters.values()
+            parameters = [p.data for p in self._parameters.values()]
         return parameters
 
     def modules(self) -> Iterator["Module"]:
