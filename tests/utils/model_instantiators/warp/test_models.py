@@ -111,7 +111,7 @@ def test_deterministic_model(capsys, device):
                 network=yaml.safe_load(network_spec.replace("PLACEHOLDER", token))["network"],
                 output="ACTIONS",
             )
-            # model.to(device=config.warp.parse_device(device))
+            model.to(device=config.warp.parse_device(device))
 
             output = model.act(_sample_inputs(token, input_space, device))
             assert len(output) == 2
@@ -140,7 +140,7 @@ def test_gaussian_model(capsys, device):
                 network=yaml.safe_load(network_spec.replace("PLACEHOLDER", token))["network"],
                 output="ACTIONS",
             )
-            # model.to(device=config.warp.parse_device(device))
+            model.to(device=config.warp.parse_device(device))
 
             output = model.act(_sample_inputs(token, input_space, device))
             assert len(output) == 2
@@ -182,7 +182,7 @@ def test_shared_gaussian_deterministic_model(capsys, device, single_forward_pass
                 ],
                 single_forward_pass=single_forward_pass,
             )
-            # model.to(device=config.warp.parse_device(device))
+            model.to(device=config.warp.parse_device(device))
 
             output = model.act(_sample_inputs(token, input_space, device), role="role_0")
             assert len(output) == 2
