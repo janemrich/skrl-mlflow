@@ -69,19 +69,24 @@ class Linear(Module):
         self.out_features = out_features
         # create/register parameters
         # - weight
-        self.weight = Parameter(wp.empty(shape=(out_features, in_features), dtype=wp.float32, device=self.device))
+        self.weight = Parameter(
+            wp.empty(shape=(self.out_features, self.in_features), dtype=wp.float32, device=self.device)
+        )
         self.register_parameter("weight", self.weight)
         # - bias
         if bias:
-            self.bias = Parameter(wp.empty(shape=(out_features, 1), dtype=wp.float32, device=self.device))
+            self.bias = Parameter(wp.empty(shape=(self.out_features, 1), dtype=wp.float32, device=self.device))
             self.register_parameter("bias", self.bias)
         else:
             self.bias = None
+        self._init_module()
+
+    def _init_module(self) -> None:
         # set default/initial values
         self.reset_parameters()
         # execution variables
         self._cache = {}
-        self._kernel = create_kernel(in_features, out_features, transposed=nn_transposed_computation)
+        self._kernel = create_kernel(self.in_features, self.out_features, transposed=nn_transposed_computation)
 
     def reset_parameters(self) -> None:
         # init parameters: sampling uniform(-1/sqrt(in_features), 1/sqrt(in_features)). \cite{he2015delving}
@@ -125,7 +130,10 @@ class LazyLinear(Linear):
 
     def forward(self, input: wp.array) -> wp.array:
         if not self._initialized:
-            in_features = input.shape[0] if nn_transposed_computation else input.shape[1]
-            super().__init__(in_features, self.out_features, self.bias)
+            self.in_features = input.shape[0] if nn_transposed_computation else input.shape[1]
+            self.weight.data = wp.empty(
+                shape=(self.out_features, self.in_features), dtype=wp.float32, device=self.device, requires_grad=True
+            )
+            self._init_module()
             self._initialized = True
         return super().forward(input)
