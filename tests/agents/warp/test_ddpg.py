@@ -5,8 +5,6 @@ import pytest
 import dataclasses
 import gymnasium
 
-import warp as wp
-
 from skrl.agents.warp.ddpg import DDPG as Agent
 from skrl.agents.warp.ddpg import DDPG_CFG as AgentCfg
 from skrl.memories.warp import RandomMemory

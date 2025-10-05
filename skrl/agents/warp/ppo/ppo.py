@@ -228,11 +228,11 @@ class PPO(Agent):
                 self.scheduler = self.cfg.learning_rate_scheduler[0](**self.cfg.learning_rate_scheduler_kwargs[0])
 
             # training variables
-            self._loss = wp.zeros((1,), dtype=wp.float32, requires_grad=True)
-            self._policy_loss = wp.zeros((1,), dtype=wp.float32, requires_grad=True)
-            self._value_loss = wp.zeros((1,), dtype=wp.float32, requires_grad=True)
-            self._entropy_loss = wp.zeros((1,), dtype=wp.float32, requires_grad=True)
-            self._kl_divergence = wp.zeros((1,), dtype=wp.float32)
+            self._loss = wp.zeros((1,), dtype=wp.float32, device=self.device, requires_grad=True)
+            self._policy_loss = wp.zeros((1,), dtype=wp.float32, device=self.device, requires_grad=True)
+            self._value_loss = wp.zeros((1,), dtype=wp.float32, device=self.device, requires_grad=True)
+            self._entropy_loss = wp.zeros((1,), dtype=wp.float32, device=self.device, requires_grad=True)
+            self._kl_divergence = wp.zeros((1,), dtype=wp.float32, device=self.device)
 
         # set up preprocessors
         # - observations

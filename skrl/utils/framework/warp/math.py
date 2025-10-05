@@ -33,7 +33,7 @@ def scalar_mul(array: wp.array, scalar: Union[int, float], inplace: bool = False
 
 
 def mean(array: wp.array, *, dtype: type = wp.float32) -> wp.array:
-    output = wp.zeros((1,), dtype=dtype, requires_grad=array.requires_grad)
+    output = wp.zeros((1,), dtype=dtype, device=array.device, requires_grad=array.requires_grad)
     wp.launch(
         _MEAN[array.ndim],
         dim=array.shape,
@@ -45,7 +45,7 @@ def mean(array: wp.array, *, dtype: type = wp.float32) -> wp.array:
 
 
 def var(array: wp.array, *, dtype: type = wp.float32, correction: int = 1) -> wp.array:
-    output = wp.zeros((1,), dtype=dtype, requires_grad=array.requires_grad)
+    output = wp.zeros((1,), dtype=dtype, device=array.device, requires_grad=array.requires_grad)
     wp.launch(
         _VAR[array.ndim],
         dim=array.shape,
@@ -58,7 +58,7 @@ def var(array: wp.array, *, dtype: type = wp.float32, correction: int = 1) -> wp
 
 def std(array: wp.array, *, dtype: type = wp.float32, correction: int = 1) -> wp.array:
     _var = var(array, dtype=dtype, correction=correction)
-    output = wp.zeros((1,), dtype=dtype, requires_grad=True) if array.requires_grad else _var
+    output = wp.zeros((1,), dtype=dtype, device=array.device, requires_grad=True) if array.requires_grad else _var
     wp.launch(_std, dim=1, inputs=[_var], outputs=[output], device=array.device)
     return output
 
