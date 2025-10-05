@@ -151,16 +151,22 @@ class SAC(Agent):
             self.log_entropy_coefficient = wp.array(
                 np.log([self._entropy_coefficient]), dtype=wp.float32, device=self.device, requires_grad=True
             )
-            self.entropy_optimizer = Adam([self.log_entropy_coefficient], lr=self.cfg.learning_rate[2])
+            self.entropy_optimizer = Adam(
+                [self.log_entropy_coefficient], lr=self.cfg.learning_rate[2], device=self.device
+            )
 
             # self.checkpoint_modules["entropy_optimizer"] = self.entropy_optimizer
 
         # set up optimizers and learning rate schedulers
         if self.policy is not None and self.critic_1 is not None and self.critic_2 is not None:
+            self.policy_learning_rate = self.cfg.learning_rate[0]
+            self.critic_learning_rate = self.cfg.learning_rate[1]
             # - optimizers
-            self.policy_optimizer = Adam(self.policy.parameters(), lr=self.cfg.learning_rate[0])
+            self.policy_optimizer = Adam(self.policy.parameters(), lr=self.policy_learning_rate, device=self.device)
             self.critic_optimizer = Adam(
-                self.critic_1.parameters() + self.critic_2.parameters(), lr=self.cfg.learning_rate[1]
+                self.critic_1.parameters() + self.critic_2.parameters(),
+                lr=self.critic_learning_rate,
+                device=self.device,
             )
             # self.checkpoint_modules["policy_optimizer"] = self.policy_optimizer
             # self.checkpoint_modules["critic_optimizer"] = self.critic_optimizer
@@ -169,11 +175,11 @@ class SAC(Agent):
             self.critic_scheduler = self.cfg.learning_rate_scheduler[1]
             if self.policy_scheduler is not None:
                 self.policy_scheduler = self.cfg.learning_rate_scheduler[0](
-                    self.policy_optimizer, **self.cfg.learning_rate_scheduler_kwargs[0]
+                    **self.cfg.learning_rate_scheduler_kwargs[0]
                 )
             if self.critic_scheduler is not None:
                 self.critic_scheduler = self.cfg.learning_rate_scheduler[1](
-                    self.critic_optimizer, **self.cfg.learning_rate_scheduler_kwargs[1]
+                    **self.cfg.learning_rate_scheduler_kwargs[1]
                 )
 
         # set up target networks
@@ -186,10 +192,10 @@ class SAC(Agent):
             self.target_critic_2.update_parameters(self.critic_2, polyak=1)
 
             # training variables
-            self._policy_loss = wp.zeros((1,), dtype=wp.float32, requires_grad=True)
-            self._critic_loss = wp.zeros((1,), dtype=wp.float32, requires_grad=True)
+            self._policy_loss = wp.zeros((1,), dtype=wp.float32, device=self.device, requires_grad=True)
+            self._critic_loss = wp.zeros((1,), dtype=wp.float32, device=self.device, requires_grad=True)
             if self.cfg.learn_entropy:
-                self._entropy_loss = wp.zeros((1,), dtype=wp.float32, requires_grad=True)
+                self._entropy_loss = wp.zeros((1,), dtype=wp.float32, device=self.device, requires_grad=True)
 
         # set up preprocessors
         # - observations
@@ -416,7 +422,7 @@ class SAC(Agent):
 
             # optimization step (critic)
             tape.backward(self._critic_loss)
-            self.critic_optimizer.step()
+            self.critic_optimizer.step(lr=self.critic_learning_rate if self.critic_scheduler else None)
             tape.zero()
 
             # compute policy (actor) loss
@@ -443,7 +449,7 @@ class SAC(Agent):
 
             # optimization step (policy)
             tape.backward(self._policy_loss)
-            self.policy_optimizer.step()
+            self.policy_optimizer.step(lr=self.policy_learning_rate if self.policy_scheduler else None)
             tape.zero()
 
             # entropy learning
@@ -479,9 +485,9 @@ class SAC(Agent):
 
             # update learning rate
             if self.policy_scheduler:
-                self.policy_scheduler.step()
+                self.policy_learning_rate *= self.policy_scheduler(timestep)
             if self.critic_scheduler:
-                self.critic_scheduler.step()
+                self.critic_learning_rate *= self.critic_scheduler(timestep)
 
             # record data
             self.track_data("Loss / Policy loss", self._policy_loss.numpy().item())
@@ -504,6 +510,6 @@ class SAC(Agent):
                 self.track_data("Coefficient / Entropy coefficient", self._entropy_coefficient.item())
 
             if self.policy_scheduler:
-                self.track_data("Learning / Policy learning rate", self.policy_scheduler.get_last_lr()[0])
+                self.track_data("Learning / Policy learning rate", self.policy_learning_rate)
             if self.critic_scheduler:
-                self.track_data("Learning / Critic learning rate", self.critic_scheduler.get_last_lr()[0])
+                self.track_data("Learning / Critic learning rate", self.critic_learning_rate)
