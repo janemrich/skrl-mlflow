@@ -67,7 +67,7 @@ def _parse_input(source: str) -> str:
             if isinstance(node.func, ast.Name):
                 # operation: concatenate
                 if node.func.id == "concatenate":
-                    node.func = ast.Attribute(value=ast.Name("wp"), attr="concatenate")
+                    node.func = ast.Attribute(value=ast.Name("warp_utils"), attr="concatenate")
                     node.keywords = [ast.keyword(arg="axis", value=ast.Constant(value=1))]
                 # operation: permute
                 elif node.func.id == "permute":
@@ -101,7 +101,7 @@ def _parse_output(source: Union[str, Sequence[str]]) -> Tuple[Union[str, Sequenc
             if isinstance(node.func, ast.Name):
                 # operation: concatenate
                 if node.func.id == "concatenate":
-                    node.func = ast.Attribute(value=ast.Name("wp"), attr="concatenate")
+                    node.func = ast.Attribute(value=ast.Name("warp_utils"), attr="concatenate")
                     node.keywords = [ast.keyword(arg="axis", value=ast.Constant(value=1))]
                 # activation functions
                 activation = _get_activation_function(node.func.id, as_module=False)

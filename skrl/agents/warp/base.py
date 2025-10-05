@@ -119,7 +119,7 @@ class Agent(ABC):
         # convert the models to their respective device
         for model in self.models.values():
             if model is not None:
-                pass
+                model.to(model.device)
 
         # data tracking
         self.tracking_data = collections.defaultdict(list)
