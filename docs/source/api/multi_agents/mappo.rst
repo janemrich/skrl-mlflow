@@ -152,7 +152,7 @@ Configuration and hyperparameters
     * - ``MAPPO_CFG``
       - :py:class:`~skrl.multi_agents.torch.mappo.MAPPO_CFG`
       - :py:class:`~skrl.multi_agents.jax.mappo.MAPPO_CFG`
-      - \-
+      -
 
 .. raw:: html
 

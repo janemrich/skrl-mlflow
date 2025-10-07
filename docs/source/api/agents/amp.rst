@@ -148,8 +148,8 @@ Configuration and hyperparameters
       - .. centered:: |_4| |warp| |_4|
     * - ``AMP_CFG``
       - :py:class:`~skrl.agents.torch.amp.AMP_CFG`
-      - \-
-      - \-
+      -
+      -
 
 .. raw:: html
 

@@ -158,7 +158,7 @@ Configuration and hyperparameters
     * - ``TD3_CFG``
       - :py:class:`~skrl.agents.torch.td3.TD3_CFG`
       - :py:class:`~skrl.agents.jax.td3.TD3_CFG`
-      - \-
+      -
 
 .. raw:: html
 

@@ -87,8 +87,8 @@ Configuration and hyperparameters
       - .. centered:: |_4| |warp| |_4|
     * - ``SARSA_CFG``
       - :py:class:`~skrl.agents.torch.sarsa.SARSA_CFG`
-      - \-
-      - \-
+      -
+      -
 
 .. raw:: html
 

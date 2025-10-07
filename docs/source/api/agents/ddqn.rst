@@ -113,7 +113,7 @@ Configuration and hyperparameters
     * - ``DDQN_CFG``
       - :py:class:`~skrl.agents.torch.ddqn.DDQN_CFG`
       - :py:class:`~skrl.agents.jax.ddqn.DDQN_CFG`
-      - \-
+      -
 
 .. raw:: html
 

@@ -87,8 +87,8 @@ Configuration and hyperparameters
       - .. centered:: |_4| |warp| |_4|
     * - ``Q_LEARNING_CFG``
       - :py:class:`~skrl.agents.torch.q_learning.Q_LEARNING_CFG`
-      - \-
-      - \-
+      -
+      -
 
 .. raw:: html
 

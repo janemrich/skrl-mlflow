@@ -208,7 +208,7 @@ Configuration and hyperparameters
     * - ``RPO_CFG``
       - :py:class:`~skrl.agents.torch.rpo.RPO_CFG`
       - :py:class:`~skrl.agents.jax.rpo.RPO_CFG`
-      - \-
+      -
 
 .. raw:: html
 

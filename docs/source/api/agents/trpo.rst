@@ -211,8 +211,8 @@ Configuration and hyperparameters
       - .. centered:: |_4| |warp| |_4|
     * - ``TRPO_CFG``
       - :py:class:`~skrl.agents.torch.trpo.TRPO_CFG`
-      - \-
-      - \-
+      -
+      -
 
 .. raw:: html
 

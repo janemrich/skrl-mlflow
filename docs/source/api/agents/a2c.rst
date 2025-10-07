@@ -153,7 +153,7 @@ Configuration and hyperparameters
     * - ``A2C_CFG``
       - :py:class:`~skrl.agents.torch.a2c.A2C_CFG`
       - :py:class:`~skrl.agents.jax.a2c.A2C_CFG`
-      - \-
+      -
 
 .. raw:: html
 

@@ -108,7 +108,7 @@ Configuration and hyperparameters
     * - ``CEM_CFG``
       - :py:class:`~skrl.agents.torch.cem.CEM_CFG`
       - :py:class:`~skrl.agents.jax.cem.CEM_CFG`
-      - \-
+      -
 
 .. raw:: html
 

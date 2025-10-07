@@ -151,7 +151,7 @@ Configuration and hyperparameters
     * - ``IPPO_CFG``
       - :py:class:`~skrl.multi_agents.torch.ippo.IPPO_CFG`
       - :py:class:`~skrl.multi_agents.jax.ippo.IPPO_CFG`
-      - \-
+      -
 
 .. raw:: html
 
