@@ -96,7 +96,7 @@ API (JAX)
     <br>
 
 API (Warp)
-^^^^^^^^^
+^^^^^^^^^^
 
 .. autoclass:: skrl.resources.noises.warp.Noise
     :undoc-members:

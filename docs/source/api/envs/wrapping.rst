@@ -376,7 +376,7 @@ Internal API (JAX)
     <br>
 
 Internal API (Warp)
-------------------
+-------------------
 
 .. autoclass:: skrl.envs.wrappers.warp.Wrapper
     :undoc-members:

@@ -29,6 +29,7 @@ def set_seed(seed: Optional[int] = None, deterministic: bool = False) -> int:
     - ``numpy``
     - ``torch`` (if available)
     - ``jax`` (skrl's PRNG key: ``config.jax.key``)
+    - ``warp`` (skrl's PRNG key: ``config.warp.key``)
 
     Example:
 
