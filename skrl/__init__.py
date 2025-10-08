@@ -344,18 +344,18 @@ class _Config(object):
                 """Warp configuration."""
                 self._key = 0
                 # device
-                self._device = "cuda"
+                self._device = "cuda:0"
                 # kernel-related config
                 self.tiled = True
                 self.block_dim = 256
                 self.tile_dim_0 = 64
                 self.tile_dim_1 = 64
+                self.tile_dim_2 = 64
 
                 # init Warp (don't import if it hasn't been imported)
                 if "warp" in sys.modules:
                     import warp as wp
 
-                    wp.config.verbose = True
                     wp.init()
 
             @staticmethod
@@ -363,7 +363,7 @@ class _Config(object):
                 """Parse the input device and return a :py:class:`~warp.context.Device` instance.
 
                 :param device: Device specification. If the specified device is ``None`` or it cannot be resolved,
-                               the default available device will be returned instead.
+                    the default available device will be returned instead.
 
                 :return: Warp Device.
                 """
