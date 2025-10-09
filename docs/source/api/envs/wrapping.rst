@@ -13,7 +13,6 @@ This library works with a common API to interact with the following RL environme
 * Farama `Gymnasium <https://gymnasium.farama.org/>`_ and `Shimmy <https://shimmy.farama.org/>`_
 * Google `DeepMind <https://github.com/deepmind/dm_env>`_ and `Brax <https://github.com/google/brax>`_
 * NVIDIA `Isaac Lab <https://isaac-sim.github.io/IsaacLab/index.html>`_ (and `Isaac Gym <https://developer.nvidia.com/isaac-gym>`_ preview 4)
-* `robosuite <https://robosuite.ai/>`_
 
 To operate with them and to support interoperability between these non-compatible interfaces, a **wrapping mechanism is provided** as shown in the diagram below
 
@@ -59,6 +58,13 @@ Usage
                     :language: python
                     :start-after: [jax-start-isaaclab]
                     :end-before: [jax-end-isaaclab]
+
+            .. group-tab:: |_4| |warp| |_4|
+
+                .. literalinclude:: ../../snippets/wrapping.py
+                    :language: python
+                    :start-after: [warp-start-isaaclab]
+                    :end-before: [warp-end-isaaclab]
 
     .. tab:: Isaac Gym
 
@@ -126,6 +132,13 @@ Usage
                                     :start-after: [jax-start-gymnasium]
                                     :end-before: [jax-end-gymnasium]
 
+                            .. group-tab:: |_4| |warp| |_4|
+
+                                .. literalinclude:: ../../snippets/wrapping.py
+                                    :language: python
+                                    :start-after: [warp-start-gymnasium]
+                                    :end-before: [warp-end-gymnasium]
+
                     .. group-tab:: Vectorized environment
 
                         Visit the Gymnasium documentation (`Vector <https://gymnasium.farama.org/api/vector>`__) for more information about the creation and usage of vectorized environments
@@ -145,6 +158,13 @@ Usage
                                     :language: python
                                     :start-after: [jax-start-gymnasium-vectorized]
                                     :end-before: [jax-end-gymnasium-vectorized]
+
+                            .. group-tab:: |_4| |warp| |_4|
+
+                                .. literalinclude:: ../../snippets/wrapping.py
+                                    :language: python
+                                    :start-after: [warp-start-gymnasium-vectorized]
+                                    :end-before: [warp-end-gymnasium-vectorized]
 
             .. tab:: Gym
 
@@ -206,6 +226,13 @@ Usage
                     :start-after: [jax-start-shimmy]
                     :end-before: [jax-end-shimmy]
 
+            .. group-tab:: |_4| |warp| |_4|
+
+                .. literalinclude:: ../../snippets/wrapping.py
+                    :language: python
+                    :start-after: [warp-start-shimmy]
+                    :end-before: [warp-end-shimmy]
+
     .. tab:: Brax
 
         .. tabs::
@@ -242,24 +269,6 @@ Usage
             ..         :start-after: [jax-start-deepmind]
             ..         :end-before: [jax-end-deepmind]
 
-    .. tab:: robosuite
-
-        .. tabs::
-
-            .. group-tab:: |_4| |pytorch| |_4|
-
-                .. literalinclude:: ../../snippets/wrapping.py
-                    :language: python
-                    :start-after: [pytorch-start-robosuite]
-                    :end-before: [pytorch-end-robosuite]
-
-            .. .. group-tab:: |_4| |jax| |_4|
-
-            ..     .. literalinclude:: ../../snippets/wrapping.py
-            ..         :language: python
-            ..         :start-after: [jax-start-robosuite]
-            ..         :end-before: [jax-end-robosuite]
-
 .. raw:: html
 
     <br>
@@ -277,6 +286,15 @@ API (JAX)
 ---------
 
 .. autofunction:: skrl.envs.wrappers.jax.wrap_env
+
+.. raw:: html
+
+    <br>
+
+API (Warp)
+----------
+
+.. autofunction:: skrl.envs.wrappers.warp.wrap_env
 
 .. raw:: html
 
@@ -321,12 +339,6 @@ Internal API (PyTorch)
     :show-inheritance:
     :members:
 
-.. autoclass:: skrl.envs.wrappers.torch.RobosuiteWrapper
-    :undoc-members:
-    :show-inheritance:
-    :private-members: _spec_to_space, _observation_to_tensor, _tensor_to_action
-    :members:
-
 .. raw:: html
 
     <br>
@@ -355,6 +367,28 @@ Internal API (JAX)
     :members:
 
 .. autoclass:: skrl.envs.wrappers.jax.BraxWrapper
+    :undoc-members:
+    :show-inheritance:
+    :members:
+
+.. raw:: html
+
+    <br>
+
+Internal API (Warp)
+-------------------
+
+.. autoclass:: skrl.envs.wrappers.warp.Wrapper
+    :undoc-members:
+    :show-inheritance:
+    :members:
+
+.. autoclass:: skrl.envs.wrappers.warp.IsaacLabWrapper
+    :undoc-members:
+    :show-inheritance:
+    :members:
+
+.. autoclass:: skrl.envs.wrappers.warp.GymnasiumWrapper
     :undoc-members:
     :show-inheritance:
     :members:

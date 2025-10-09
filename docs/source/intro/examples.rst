@@ -444,45 +444,10 @@ These examples perform the training of one agent in a DeepMind environment (**on
               - Script
               - Checkpoint (Hugging Face)
             * - Control: Cartpole SwingUp
-              - :download:`dm_suite_cartpole_swingup_ddpg.py <../../../examples/deepmind/dm_suite_cartpole_swingup_ddpg.py>`
+              - :download:`torch_dm_cartpole_swingup_ddpg.py <../../../examples/deepmind/torch_dm_cartpole_swingup_ddpg.py>`
               -
             * - Manipulation: Reach Site Vision
-              - :download:`dm_manipulation_stack_sac.py <../../../examples/deepmind/dm_manipulation_stack_sac.py>`
-              -
-
-.. raw:: html
-
-    <br>
-
-Robosuite environments
-^^^^^^^^^^^^^^^^^^^^^^
-
-These examples perform the training of one agent in a robosuite environment (**one agent, one environment**)
-
-.. image:: ../_static/imgs/example_robosuite.png
-    :width: 50%
-    :align: center
-    :alt: robosuite environments
-
-.. raw:: html
-
-    <br>
-
-.. tabs::
-
-    .. group-tab:: |_4| |pytorch| |_4|
-
-        .. list-table::
-            :align: left
-            :header-rows: 1
-            :stub-columns: 1
-            :class: nowrap
-
-            * - Environment
-              - Script
-              - Checkpoint (Hugging Face)
-            * - TwoArmLift
-              - :download:`td3_robosuite_two_arm_lift.py <../../../examples/robosuite/td3_robosuite_two_arm_lift.py>`
+              - :download:`torch_dm_manipulation_stack_sac.py <../../../examples/deepmind/torch_dm_manipulation_stack_sac.py>`
               -
 
 .. raw:: html

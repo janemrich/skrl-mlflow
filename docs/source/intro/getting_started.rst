@@ -285,24 +285,6 @@ Among the methods and properties defined in the wrapped environment, the state, 
                     ..         :start-after: [jax-start-deepmind]
                     ..         :end-before: [jax-end-deepmind]
 
-            .. tab:: robosuite
-
-                .. tabs::
-
-                    .. group-tab:: |_4| |pytorch| |_4|
-
-                        .. literalinclude:: ../snippets/wrapping.py
-                            :language: python
-                            :start-after: [pytorch-start-robosuite]
-                            :end-before: [pytorch-end-robosuite]
-
-                    .. .. group-tab:: |_4| |jax| |_4|
-
-                    ..     .. literalinclude:: ../snippets/wrapping.py
-                    ..         :language: python
-                    ..         :start-after: [jax-start-robosuite]
-                    ..         :end-before: [jax-end-robosuite]
-
     .. group-tab:: Multi-agent environments
 
         .. tabs::

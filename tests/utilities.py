@@ -14,6 +14,13 @@ def is_device_available(device, *, backend) -> bool:
             torch.zeros((1,), device=device)
         except Exception as e:
             return False
+    elif backend == "warp":
+        import warp as wp
+
+        try:
+            wp.get_device(device)
+        except Exception as e:
+            return False
     else:
         raise ValueError(f"Invalid backend: {backend}")
     return True
@@ -50,6 +57,8 @@ def _sample_flattened_space(*, space, num_envs, device, ml_framework):
         from skrl.utils.spaces.torch import flatten_tensorized_space, sample_space
     elif ml_framework == "jax":
         from skrl.utils.spaces.jax import flatten_tensorized_space, sample_space
+    elif ml_framework == "warp":
+        from skrl.utils.spaces.warp import flatten_tensorized_space, sample_space
 
     return flatten_tensorized_space(sample_space(space, batch_size=num_envs, backend="native", device=device))
 
@@ -59,6 +68,8 @@ def _sample_flattened_spaces(*, spaces, num_envs, device, ml_framework):
         from skrl.utils.spaces.torch import flatten_tensorized_space, sample_space
     elif ml_framework == "jax":
         from skrl.utils.spaces.jax import flatten_tensorized_space, sample_space
+    elif ml_framework == "warp":
+        from skrl.utils.spaces.warp import flatten_tensorized_space, sample_space
 
     return {
         uid: flatten_tensorized_space(sample_space(space, batch_size=num_envs, backend="native", device=device))
@@ -71,6 +82,8 @@ def _check_flattened_space(*, sample, space, num_envs, ml_framework):
         from skrl.utils.spaces.torch import compute_space_size
     elif ml_framework == "jax":
         from skrl.utils.spaces.jax import compute_space_size
+    elif ml_framework == "warp":
+        from skrl.utils.spaces.warp import compute_space_size
 
     space_size = compute_space_size(space, occupied_size=True)
     assert sample.shape[0] == num_envs, f"Space dim 0 mismatch: expected {num_envs}, got {sample.shape[0]}"
@@ -82,6 +95,8 @@ def _check_flattened_spaces(*, sample, spaces, num_envs, ml_framework):
         from skrl.utils.spaces.torch import compute_space_size
     elif ml_framework == "jax":
         from skrl.utils.spaces.jax import compute_space_size
+    elif ml_framework == "warp":
+        from skrl.utils.spaces.warp import compute_space_size
 
     for uid, space in spaces.items():
         if space is None:
@@ -99,7 +114,7 @@ class SingleAgentEnv:
     def __init__(
         self, *, observation_space, state_space, action_space, num_envs, device, ml_framework, probability=0.05
     ):
-        assert ml_framework in ["torch", "jax"]
+        assert ml_framework in ["torch", "jax", "warp"]
         self._ml_framework = ml_framework
         self._probability = probability
 
@@ -113,6 +128,8 @@ class SingleAgentEnv:
             self.device = config.torch.parse_device(device)
         elif self._ml_framework == "jax":
             self.device = config.jax.parse_device(device)
+        elif self._ml_framework == "warp":
+            self.device = config.warp.parse_device(device)
 
     def _tensorize(self, x, dtype):
         if self._ml_framework == "torch":
@@ -125,6 +142,11 @@ class SingleAgentEnv:
 
             dtype = {bool: np.int8, int: np.int32, float: np.float32}[dtype]
             return jax.device_put(np.array(x, dtype=dtype).reshape(self.num_envs, -1), device=self.device)
+        elif self._ml_framework == "warp":
+            import warp as wp
+
+            dtype = {bool: np.int8, int: np.int32, float: np.float32}[dtype]
+            return wp.array(np.array(x, dtype=dtype).reshape(self.num_envs, -1), device=self.device)
 
     # Wrapper methods
 
@@ -177,7 +199,7 @@ class MultiAgentEnv:
     def __init__(
         self, *, observation_spaces, state_spaces, action_spaces, num_envs, device, ml_framework, probability=0.05
     ):
-        assert ml_framework in ["torch", "jax"]
+        assert ml_framework in ["torch", "jax", "warp"]
         self._ml_framework = ml_framework
         self._probability = probability
 
@@ -194,6 +216,8 @@ class MultiAgentEnv:
             self.device = config.torch.parse_device(device)
         elif self._ml_framework == "jax":
             self.device = config.jax.parse_device(device)
+        elif self._ml_framework == "warp":
+            self.device = config.warp.parse_device(device)
 
     def _tensorize(self, x, dtype):
         if self._ml_framework == "torch":
@@ -210,6 +234,14 @@ class MultiAgentEnv:
             dtype = {bool: np.int8, int: np.int32, float: np.float32}[dtype]
             return {
                 uid: jax.device_put(np.array(x, dtype=dtype).reshape(self.num_envs, -1), device=self.device)
+                for uid in self.possible_agents
+            }
+        elif self._ml_framework == "warp":
+            import warp as wp
+
+            dtype = {bool: np.int8, int: np.int32, float: np.float32}[dtype]
+            return {
+                uid: wp.array(np.array(x, dtype=dtype).reshape(self.num_envs, -1), device=self.device)
                 for uid in self.possible_agents
             }
 
@@ -271,7 +303,7 @@ class MultiAgentEnv:
 
 class _AgentMock:
     def __init__(self, *, observation_space, state_space, action_space, num_envs, device, ml_framework, **kwargs):
-        assert ml_framework in ["torch", "jax"]
+        assert ml_framework in ["torch", "jax", "warp"]
         self._ml_framework = ml_framework
 
         # Agent properties
@@ -283,6 +315,8 @@ class _AgentMock:
             self.device = config.torch.parse_device(device)
         elif self._ml_framework == "jax":
             self.device = config.jax.parse_device(device)
+        elif self._ml_framework == "warp":
+            self.device = config.warp.parse_device(device)
 
         self.memory = None
         self.models = {}
@@ -372,7 +406,7 @@ class _MultiAgentMock:
         ml_framework,
         **kwargs,
     ):
-        assert ml_framework in ["torch", "jax"]
+        assert ml_framework in ["torch", "jax", "warp"]
         self._ml_framework = ml_framework
 
         # Multi-agent properties
@@ -386,6 +420,8 @@ class _MultiAgentMock:
             self.device = config.torch.parse_device(device)
         elif self._ml_framework == "jax":
             self.device = config.jax.parse_device(device)
+        elif self._ml_framework == "warp":
+            self.device = config.warp.parse_device(device)
 
         self.memories = {}
         self.models = {}

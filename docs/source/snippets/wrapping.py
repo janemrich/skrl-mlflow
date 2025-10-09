@@ -322,36 +322,6 @@ env = wrap_env(env)  # or 'env = wrap_env(env, wrapper="dm")'
 
 # =============================================================================
 
-# [pytorch-start-robosuite]
-# import the environment wrapper
-from skrl.envs.wrappers.torch import wrap_env
-
-# import the robosuite modules
-import robosuite
-from robosuite.controllers import load_controller_config
-
-# load the environment
-controller_config = load_controller_config(default_controller="OSC_POSE")
-env = robosuite.make("TwoArmLift",
-                     robots=["Sawyer", "Panda"],             # load a Sawyer robot and a Panda robot
-                     gripper_types="default",                # use default grippers per robot arm
-                     controller_configs=controller_config,   # each arm is controlled using OSC
-                     env_configuration="single-arm-opposed", # (two-arm envs only) arms face each other
-                     has_renderer=True,                      # on-screen rendering
-                     render_camera="frontview",              # visualize the "frontview" camera
-                     has_offscreen_renderer=False,           # no off-screen rendering
-                     control_freq=20,                        # 20 hz control for applied actions
-                     horizon=200,                            # each episode terminates after 200 steps
-                     use_object_obs=True,                    # provide object observations to agent
-                     use_camera_obs=False,                   # don't provide image observations to agent
-                     reward_shaping=True)                    # use a dense reward signal for learning
-
-# wrap the environment
-env = wrap_env(env)  # or 'env = wrap_env(env, wrapper="robosuite")'
-# [pytorch-end-robosuite]
-
-# =============================================================================
-
 # [start-bidexhands-torch]
 # import the environment wrapper and loader
 from skrl.envs.wrappers.torch import wrap_env

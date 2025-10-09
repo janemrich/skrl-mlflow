@@ -1,10 +1,11 @@
 import argparse
+import math
 import os
 import gym
 
 # import the skrl components to build the RL system
 from skrl import config, logger
-from skrl.agents.jax.dqn import DQN, DQN_DEFAULT_CONFIG
+from skrl.agents.jax.dqn import DQN, DQN_CFG
 from skrl.envs.wrappers.jax import wrap_env
 from skrl.memories.jax import RandomMemory
 from skrl.trainers.jax import SequentialTrainer
@@ -80,14 +81,13 @@ for model in models.values():
 
 # configure and instantiate the agent (visit its documentation to see all the options)
 # https://skrl.readthedocs.io/en/latest/api/agents/dqn.html#configuration-and-hyperparameters
-cfg = DQN_DEFAULT_CONFIG.copy()
-cfg["learning_starts"] = 100
-cfg["exploration"]["final_epsilon"] = 0.04
-cfg["exploration"]["timesteps"] = 1500
+cfg = DQN_CFG()
+cfg.learning_starts = 100
+cfg.exploration_scheduler = lambda timestep, timesteps: max(math.exp(-10 * timestep / timesteps), 0.05)
 # logging to TensorBoard and write checkpoints (in timesteps)
-cfg["experiment"]["write_interval"] = "auto" if not args.eval else 0
-cfg["experiment"]["checkpoint_interval"] = "auto" if not args.eval else 0
-cfg["experiment"]["directory"] = f"runs/jax/{task_name}"
+cfg.experiment.write_interval = "auto" if not args.eval else 0
+cfg.experiment.checkpoint_interval = "auto" if not args.eval else 0
+cfg.experiment.directory = f"runs/jax/{task_name}"
 
 agent = DQN(
     models=models,

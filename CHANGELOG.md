@@ -4,6 +4,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ## [2.0.0] - Unreleased
 ### Added
+- Implement RL algorithms in NVIDIA Warp
 - Add Tabular model instantiator (epsilon-greedy variant)
 - Add `compute_space_limits` space utility to get Gymnasium spaces' limits
 - Add `ScopedTimer` utils to measure code execution time
@@ -27,6 +28,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - Remove checkpoints/models migration support from other RL libraries
 - Remove support for Omniverse Isaac Gym environments (deprecated in favor of Isaac Lab)
 - Remove Isaac Gym (web viewer, inverse kinematic) and Omniverse Isaac Gym (local environment instance, inverse kinematic) utils
+- Remove robosuite environments wrapper and examples
 
 ## [1.4.3] - 2025-03-29
 ### Changed
@@ -154,7 +156,7 @@ This release also announces the publication of the **skrl** paper in the Journal
 Machine Learning Research (JMLR): https://www.jmlr.org/papers/v24/23-0112.html
 
 Summary of the most relevant features:
-- JAX support
+- RL algorithm implementations in JAX
 - New documentation theme and structure
 - Multi-agent Reinforcement Learning (MARL)
 
@@ -179,7 +181,7 @@ Summary of the most relevant features:
 
 ## [1.0.0-rc.1] - 2023-07-25
 ### Added
-- JAX support (with Flax and Optax)
+- Implement RL algorithms in JAX (Flax/Optax)
 - RPO agent
 - IPPO and MAPPO multi-agent
 - Multi-agent base class

@@ -12,7 +12,6 @@ from skrl.envs.wrappers.torch.gymnasium_envs import GymnasiumWrapper
 from skrl.envs.wrappers.torch.isaacgym_envs import IsaacGymPreview4Wrapper
 from skrl.envs.wrappers.torch.isaaclab_envs import IsaacLabMultiAgentWrapper, IsaacLabWrapper
 from skrl.envs.wrappers.torch.pettingzoo_envs import PettingZooWrapper
-from skrl.envs.wrappers.torch.robosuite_envs import RobosuiteWrapper
 
 
 __all__ = ["wrap_env", "Wrapper", "MultiAgentEnvWrapper"]
@@ -29,7 +28,6 @@ def wrap_env(
         "isaaclab",
         "isaaclab-single-agent",
         "isaacgym-preview4",
-        "robosuite",
         "pettingzoo",
         "isaaclab-multi-agent",
         "bidexhands",
@@ -67,8 +65,6 @@ def wrap_env(
                 - ``"isaaclab"`` (``"isaaclab-single-agent"``)
             * - Isaac Gym preview 4
                 - ``"isaacgym-preview4"``
-            * - Robosuite
-                - ``"robosuite"``
 
         .. list-table:: Multi-agent environments |br|
             :header-rows: 1
@@ -115,8 +111,6 @@ def wrap_env(
             return "isaacgym-preview4"
         elif _in("brax.envs..*", base_classes):
             return "brax"
-        elif _in("robosuite.environments.", base_classes):
-            return "robosuite"
         elif _in("dm_env..*", base_classes):
             return "dm"
         elif _in("pettingzoo.utils.env", base_classes) or _in("pettingzoo.utils.wrappers", base_classes):
@@ -146,10 +140,6 @@ def wrap_env(
         if verbose:
             logger.info("Environment wrapper: DeepMind")
         return DeepMindWrapper(env)
-    elif wrapper == "robosuite":
-        if verbose:
-            logger.info("Environment wrapper: Robosuite")
-        return RobosuiteWrapper(env)
     elif wrapper == "bidexhands":
         if verbose:
             logger.info("Environment wrapper: Bi-DexHands")

@@ -27,16 +27,18 @@ class DeepMindWrapper(Wrapper):
         from dm_env import specs
 
         self._specs = specs
+        self._observation_space = self._spec_to_space(self._env.observation_spec())
+        self._action_space = self._spec_to_space(self._env.action_spec())
 
     @property
     def observation_space(self) -> gymnasium.Space:
         """Observation space."""
-        return self._spec_to_space(self._env.observation_spec())
+        return self._observation_space
 
     @property
     def action_space(self) -> gymnasium.Space:
         """Action space."""
-        return self._spec_to_space(self._env.action_spec())
+        return self._action_space
 
     def _spec_to_space(self, spec: Any) -> gymnasium.Space:
         """Convert the DeepMind spec to a gymnasium space.

@@ -190,7 +190,7 @@ class Agent(ABC):
 
         :param trainer_cfg: Trainer configuration.
         """
-        trainer_cfg = {} if trainer_cfg is None else trainer_cfg
+        trainer_cfg = {} if trainer_cfg is None else dataclasses.asdict(trainer_cfg)
 
         # update agent configuration to avoid duplicated logging/checking in distributed runs
         if config.jax.is_distributed and config.jax.rank:
