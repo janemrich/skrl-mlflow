@@ -1,4 +1,6 @@
-from typing import List, Literal, Optional, Sequence, Union
+from __future__ import annotations
+
+from typing import Literal
 
 import numpy as np
 import warp as wp
@@ -12,7 +14,7 @@ class RandomMemory(Memory):
         *,
         memory_size: int,
         num_envs: int = 1,
-        device: Optional[wp.context.Device] = None,
+        device: str | wp.context.Device | None = None,
         export: bool = False,
         export_format: Literal["pt", "npz", "csv"] = "pt",
         export_directory: str = "",
@@ -48,8 +50,8 @@ class RandomMemory(Memory):
         self._replacement = replacement
 
     def sample(
-        self, names: Sequence[str], *, batch_size: int, mini_batches: int = 1, sequence_length: int = 1
-    ) -> List[List[wp.array]]:
+        self, names: list[str], *, batch_size: int, mini_batches: int = 1, sequence_length: int = 1
+    ) -> list[list[wp.array]]:
         """Sample a batch from memory randomly.
 
         :param names: Tensors names from which to obtain the samples.

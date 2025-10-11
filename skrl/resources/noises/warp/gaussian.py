@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union
+from __future__ import annotations
 
 import warp as wp
 
@@ -14,7 +14,7 @@ def _sample(dst: wp.array2d(dtype=float), mean: float, std: float, key: int):
 
 
 class GaussianNoise(Noise):
-    def __init__(self, *, mean: float, std: float, device: Optional[Union[str, wp.context.Device]] = None) -> None:
+    def __init__(self, *, mean: float, std: float, device: str | wp.context.Device | None = None) -> None:
         """Gaussian noise.
 
         :param mean: Mean of the normal distribution.
@@ -31,7 +31,7 @@ class GaussianNoise(Noise):
         self.mean = mean
         self.std = std
 
-    def sample(self, size: Tuple[int]) -> wp.array:
+    def sample(self, size: list[int]) -> wp.array:
         """Sample a Gaussian noise.
 
         :param size: Noise shape.

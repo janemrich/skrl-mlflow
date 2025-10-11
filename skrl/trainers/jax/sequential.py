@@ -1,4 +1,4 @@
-from typing import List, Optional, Union
+from __future__ import annotations
 
 import contextlib
 import copy
@@ -24,10 +24,10 @@ class SequentialTrainer(Trainer):
     def __init__(
         self,
         *,
-        env: Union[Wrapper, MultiAgentEnvWrapper],
-        agents: Union[Agent, MultiAgent, List[Agent], List[MultiAgent]],
-        scopes: Optional[List[int]] = None,
-        cfg: Optional[dict] = None,
+        env: Wrapper | MultiAgentEnvWrapper,
+        agents: Agent | MultiAgent | list[Agent] | list[MultiAgent],
+        scopes: list[int] | None = None,
+        cfg: SequentialTrainerCfg | dict = {},
     ) -> None:
         """Sequential trainer.
 

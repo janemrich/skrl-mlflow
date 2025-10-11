@@ -1,4 +1,4 @@
-from typing import Optional, Sequence
+from __future__ import annotations
 
 import os
 import sys
@@ -42,9 +42,9 @@ def _print_cfg(d, indent=0) -> None:
 def load_bidexhands_env(
     *,
     task_name: str = "",
-    num_envs: Optional[int] = None,
-    headless: Optional[bool] = None,
-    cli_args: Sequence[str] = [],
+    num_envs: int | None = None,
+    headless: bool | None = None,
+    cli_args: list[str] = [],
     bidexhands_path: str = "",
     show_cfg: bool = True,
 ):

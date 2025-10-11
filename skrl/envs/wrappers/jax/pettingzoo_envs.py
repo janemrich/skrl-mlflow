@@ -1,4 +1,6 @@
-from typing import Any, Mapping, Tuple, Union
+from __future__ import annotations
+
+from typing import Any
 
 import collections
 
@@ -22,12 +24,12 @@ class PettingZooWrapper(MultiAgentEnvWrapper):
         """
         super().__init__(env)
 
-    def step(self, actions: Mapping[str, Union[np.ndarray, jax.Array]]) -> Tuple[
-        Mapping[str, Union[np.ndarray, jax.Array]],
-        Mapping[str, Union[np.ndarray, jax.Array]],
-        Mapping[str, Union[np.ndarray, jax.Array]],
-        Mapping[str, Union[np.ndarray, jax.Array]],
-        Mapping[str, Any],
+    def step(self, actions: dict[str, np.ndarray | jax.Array]) -> tuple[
+        dict[str, np.ndarray | jax.Array],
+        dict[str, np.ndarray | jax.Array],
+        dict[str, np.ndarray | jax.Array],
+        dict[str, np.ndarray | jax.Array],
+        dict[str, Any],
     ]:
         """Perform a step in the environment.
 
@@ -62,7 +64,7 @@ class PettingZooWrapper(MultiAgentEnvWrapper):
             truncated = {uid: jax.device_put(value, device=self.device) for uid, value in truncated.items()}
         return observations, rewards, terminated, truncated, infos
 
-    def state(self) -> Union[np.ndarray, jax.Array]:
+    def state(self) -> np.ndarray | jax.Array:
         """Get the environment state.
 
         :return: State.
@@ -75,7 +77,7 @@ class PettingZooWrapper(MultiAgentEnvWrapper):
             state = jax.device_put(state, device=self.device)
         return state
 
-    def reset(self) -> Tuple[Mapping[str, Union[np.ndarray, jax.Array]], Mapping[str, Any]]:
+    def reset(self) -> tuple[dict[str, np.ndarray | jax.Array], dict[str, Any]]:
         """Reset the environment.
 
         :return: Observation, info.

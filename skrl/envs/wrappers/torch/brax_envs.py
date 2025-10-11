@@ -1,4 +1,6 @@
-from typing import Any, Tuple, Union
+from __future__ import annotations
+
+from typing import Any
 
 import gymnasium
 
@@ -40,7 +42,7 @@ class BraxWrapper(Wrapper):
         """Action space."""
         return convert_gym_space(self._unwrapped.action_space, squeeze_batch_dimension=True)
 
-    def step(self, actions: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Any]:
+    def step(self, actions: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Any]:
         """Perform a step in the environment.
 
         :param actions: The actions to perform.
@@ -52,7 +54,7 @@ class BraxWrapper(Wrapper):
         truncated = torch.zeros_like(terminated)
         return observation, reward.view(-1, 1), terminated.view(-1, 1), truncated.view(-1, 1), info
 
-    def state(self) -> Union[torch.Tensor, None]:
+    def state(self) -> torch.Tensor | None:
         """Get the environment state.
 
         :return: State.
@@ -64,7 +66,7 @@ class BraxWrapper(Wrapper):
         except:
             return None
 
-    def reset(self) -> Tuple[torch.Tensor, Any]:
+    def reset(self) -> tuple[torch.Tensor, dict[str, Any]]:
         """Reset the environment.
 
         :return: Observation, info.

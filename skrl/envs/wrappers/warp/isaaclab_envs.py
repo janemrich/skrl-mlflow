@@ -1,4 +1,6 @@
-from typing import Any, Mapping, Tuple, Union
+from __future__ import annotations
+
+from typing import Any
 
 import gymnasium
 
@@ -27,7 +29,7 @@ class IsaacLabWrapper(Wrapper):
         self._info = {}
 
     @property
-    def state_space(self) -> Union[gymnasium.Space, None]:
+    def state_space(self) -> gymnasium.Space | None:
         """State space."""
         try:
             return self._unwrapped.single_observation_space["critic"]
@@ -54,7 +56,7 @@ class IsaacLabWrapper(Wrapper):
         except:
             return self._unwrapped.action_space
 
-    def step(self, actions: wp.array) -> Tuple[wp.array, wp.array, wp.array, wp.array, Any]:
+    def step(self, actions: wp.array) -> tuple[wp.array, wp.array, wp.array, wp.array, Any]:
         """Perform a step in the environment.
 
         :param actions: The actions to perform.
@@ -78,14 +80,14 @@ class IsaacLabWrapper(Wrapper):
             self._info,
         )
 
-    def state(self) -> Union[wp.array, None]:
+    def state(self) -> wp.array | None:
         """Get the environment state.
 
         :return: State.
         """
         return self._states
 
-    def reset(self) -> Tuple[wp.array, Any]:
+    def reset(self) -> tuple[wp.array, Any]:
         """Reset the environment.
 
         :return: Observation, info.

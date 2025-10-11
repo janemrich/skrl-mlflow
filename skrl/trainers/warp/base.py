@@ -1,4 +1,4 @@
-from typing import List, Optional, Union
+from __future__ import annotations
 
 import atexit
 import contextlib
@@ -13,7 +13,7 @@ from skrl.envs.wrappers.warp import Wrapper
 from skrl.utils import ScopedTimer
 
 
-def generate_equally_spaced_scopes(*, num_envs: int, num_simultaneous_agents: int) -> List[int]:
+def generate_equally_spaced_scopes(*, num_envs: int, num_simultaneous_agents: int) -> list[int]:
     """Generate a list of equally spaced scopes for simultaneous agents.
 
     :param num_envs: Number of environments.
@@ -70,8 +70,8 @@ class Trainer(ABC):
         *,
         cfg: TrainerCfg,
         env: Wrapper,
-        agents: Union[Agent, List[Agent]],
-        scopes: Optional[List[int]] = None,
+        agents: Agent | list[Agent],
+        scopes: list[int] | None = None,
     ) -> None:
         """Base trainer class for implementing custom trainers.
 

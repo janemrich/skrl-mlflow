@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
@@ -8,7 +8,7 @@ from skrl import config
 
 
 class Noise(ABC):
-    def __init__(self, *, device: Optional[Union[str, wp.context.Device]] = None) -> None:
+    def __init__(self, *, device: str | wp.context.Device | None = None) -> None:
         """Base noise class for implementing custom noises.
 
         :param device: Data allocation and computation device. If not specified, the default device will be used.
@@ -35,7 +35,7 @@ class Noise(ABC):
         return self.sample(tensor.shape)
 
     @abstractmethod
-    def sample(self, size: Tuple[int]) -> wp.array:
+    def sample(self, size: list[int]) -> wp.array:
         """Sample noise.
 
         :param size: Noise shape.

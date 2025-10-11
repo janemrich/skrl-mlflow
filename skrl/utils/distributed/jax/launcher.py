@@ -1,4 +1,4 @@
-from typing import Mapping, Sequence
+from __future__ import annotations
 
 import argparse
 import multiprocessing as mp
@@ -38,8 +38,8 @@ def _get_args_parser() -> argparse.ArgumentParser:
 
 
 def _start_processes(
-    cmd: Sequence[str],
-    envs: Sequence[Mapping[str, str]],
+    cmd: list[str],
+    envs: list[dict[str, str]],
     nprocs: int,
     daemon: bool = False,
     start_method: str = "spawn",
@@ -64,7 +64,7 @@ def _start_processes(
         process.join()
 
 
-def _process(cmd: Sequence[str], env: Mapping[str, str]) -> None:
+def _process(cmd: list[str], env: dict[str, str]) -> None:
     """Run a command in the current process.
 
     :param cmd: Command to run.

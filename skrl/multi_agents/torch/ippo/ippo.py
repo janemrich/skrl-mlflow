@@ -1,4 +1,6 @@
-from typing import Any, Mapping, Optional, Sequence, Tuple, Union
+from __future__ import annotations
+
+from typing import Any
 
 import copy
 import itertools
@@ -63,14 +65,14 @@ class IPPO(MultiAgent):
     def __init__(
         self,
         *,
-        possible_agents: Sequence[str],
-        models: Mapping[str, Mapping[str, Model]],
-        memories: Optional[Mapping[str, Memory]] = None,
-        observation_spaces: Optional[Mapping[str, gymnasium.Space]] = None,
-        state_spaces: Optional[Mapping[str, gymnasium.Space]] = None,
-        action_spaces: Optional[Mapping[str, gymnasium.Space]] = None,
-        device: Optional[Union[str, torch.device]] = None,
-        cfg: Optional[dict] = None,
+        possible_agents: list[str],
+        models: dict[str, dict[str, Model]],
+        memories: dict[str, Memory] | None = None,
+        observation_spaces: dict[str, gymnasium.Space] | None = None,
+        state_spaces: dict[str, gymnasium.Space] | None = None,
+        action_spaces: dict[str, gymnasium.Space] | None = None,
+        device: str | torch.device | None = None,
+        cfg: IPPO_CFG | dict = {},
     ) -> None:
         """Independent Proximal Policy Optimization (IPPO).
 
@@ -118,7 +120,7 @@ class IPPO(MultiAgent):
                         self.values[uid].broadcast_parameters()
 
         # set up automatic mixed precision
-        self._device_type = torch.device(device).type
+        self._device_type = torch.device(self.device).type
         if version.parse(torch.__version__) >= version.parse("2.4"):
             self.scaler = torch.amp.GradScaler(device=self._device_type, enabled=self.cfg.mixed_precision)
         else:
@@ -177,7 +179,7 @@ class IPPO(MultiAgent):
             else:
                 self._value_preprocessor[uid] = self._empty_preprocessor
 
-    def init(self, *, trainer_cfg: Optional[Mapping[str, Any]] = None) -> None:
+    def init(self, *, trainer_cfg: dict[str, Any] | None = None) -> None:
         """Initialize the agent.
 
         :param trainer_cfg: Trainer configuration.
@@ -211,12 +213,12 @@ class IPPO(MultiAgent):
 
     def act(
         self,
-        observations: Mapping[str, torch.Tensor],
-        states: Mapping[str, Union[torch.Tensor, None]],
+        observations: dict[str, torch.Tensor],
+        states: dict[str, torch.Tensor | None],
         *,
         timestep: int,
         timesteps: int,
-    ) -> Tuple[Mapping[str, torch.Tensor], Mapping[str, Union[torch.Tensor, Any]]]:
+    ) -> tuple[dict[str, torch.Tensor], dict[str, Any]]:
         """Process the environment's observations/states to make a decision (actions) using the main policy.
 
         :param observations: Environment observations.
@@ -252,15 +254,15 @@ class IPPO(MultiAgent):
     def record_transition(
         self,
         *,
-        observations: Mapping[str, torch.Tensor],
-        states: Mapping[str, torch.Tensor],
-        actions: Mapping[str, torch.Tensor],
-        rewards: Mapping[str, torch.Tensor],
-        next_observations: Mapping[str, torch.Tensor],
-        next_states: Mapping[str, torch.Tensor],
-        terminated: Mapping[str, torch.Tensor],
-        truncated: Mapping[str, torch.Tensor],
-        infos: Mapping[str, Any],
+        observations: dict[str, torch.Tensor],
+        states: dict[str, torch.Tensor | None],
+        actions: dict[str, torch.Tensor],
+        rewards: dict[str, torch.Tensor],
+        next_observations: dict[str, torch.Tensor],
+        next_states: dict[str, torch.Tensor],
+        terminated: dict[str, torch.Tensor],
+        truncated: dict[str, torch.Tensor],
+        infos: dict[str, Any],
         timestep: int,
         timesteps: int,
     ) -> None:
