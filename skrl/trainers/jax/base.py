@@ -111,7 +111,7 @@ class Trainer(ABC):
 
         :return: Representation of the trainer as string.
         """
-        string = f"Trainer: {self}"
+        string = f"Trainer: {type(self).__name__}"
         string += f"\n  |-- Number of parallelizable environments: {self.env.num_envs}"
         string += f"\n  |-- Number of simultaneous agents: {self.num_simultaneous_agents}"
         string += "\n  |-- Agents and scopes:"
