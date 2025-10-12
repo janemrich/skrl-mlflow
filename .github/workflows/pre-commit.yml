@@ -1,6 +1,10 @@
 name: pre-commit
 
-on: [ push, pull_request ]
+on:
+  push:
+    paths: [ 'skrl/**', 'tests/**' ]
+  pull_request:
+    paths: [ 'skrl/**', 'tests/**' ]
 
 jobs:
 

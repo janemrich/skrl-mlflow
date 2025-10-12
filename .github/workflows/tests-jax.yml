@@ -3,8 +3,10 @@ name: tests-jax
 on:
   push:
     branches: [ main, develop ]
+    paths: [ 'skrl/**', 'tests/**' ]
   pull_request:
     branches: [ main, develop ]
+    paths: [ 'skrl/**', 'tests/**' ]
   schedule:
     - cron: "9 9 * * 6"  # every Saturday at 9:09 UTC
 
