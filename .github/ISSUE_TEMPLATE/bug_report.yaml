@@ -6,7 +6,7 @@ body:
   attributes:
     value: |
       <br>
-      **Your help in making skrl better is greatly appreciated!**
+      Your help in making skrl better is greatly appreciated!
 
       * Please ensure that:
         * The issue hasn't already been reported by using the [issue search](https://github.com/Toni-SM/skrl/search?q=is%3Aissue&type=issues).
@@ -51,11 +51,11 @@ body:
   attributes:
     label: What ML framework/library version are you using?
     description: |
-      The versions can be retrieved using the following command:
+      Versions can be retrieved using the following commands:
       * PyTorch: `pip show torch`
       * JAX: `pip show jax jaxlib flax optax`
       * Warp: `pip show warp-lang`
-    placeholder: PyTorch version, JAX/jaxlib/Flax/Optax version, etc.
+    placeholder: PyTorch, JAX/Flax/Optax, Warp versions
 - type: input
   attributes:
     label: Additional system information
