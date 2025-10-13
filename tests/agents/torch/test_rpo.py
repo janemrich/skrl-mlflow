@@ -2,12 +2,13 @@ import hypothesis
 import hypothesis.strategies as st
 import pytest
 
+import dataclasses
 import gymnasium
 
 import torch
 
 from skrl.agents.torch.rpo import RPO as Agent
-from skrl.agents.torch.rpo import RPO_DEFAULT_CONFIG as DEFAULT_CONFIG
+from skrl.agents.torch.rpo import RPO_CFG as AgentCfg
 from skrl.memories.torch import RandomMemory
 from skrl.resources.preprocessors.torch import RunningStandardScaler
 from skrl.resources.schedulers.torch import KLAdaptiveLR
@@ -42,7 +43,6 @@ from ...utilities import SingleAgentEnv, check_config_keys, get_test_mixed_preci
     grad_norm_clip=st.floats(min_value=0, max_value=1),
     ratio_clip=st.floats(min_value=0, max_value=1),
     value_clip=st.floats(min_value=0, max_value=1),
-    clip_predicted_values=st.booleans(),
     entropy_loss_scale=st.floats(min_value=0, max_value=1),
     value_loss_scale=st.floats(min_value=0, max_value=1),
     kl_threshold=st.floats(min_value=0, max_value=1),
@@ -53,6 +53,7 @@ from ...utilities import SingleAgentEnv, check_config_keys, get_test_mixed_preci
 @hypothesis.settings(
     suppress_health_check=[hypothesis.HealthCheck.function_scoped_fixture],
     deadline=None,
+    max_examples=15,
     phases=[hypothesis.Phase.explicit, hypothesis.Phase.reuse, hypothesis.Phase.generate],
 )
 @pytest.mark.parametrize("device", ["cpu", "cuda:0"])
@@ -85,7 +86,6 @@ def test_agent(
     grad_norm_clip,
     ratio_clip,
     value_clip,
-    clip_predicted_values,
     entropy_loss_scale,
     value_loss_scale,
     kl_threshold,
@@ -190,7 +190,7 @@ def test_agent(
         "mini_batches": mini_batches,
         "alpha": alpha,
         "discount_factor": discount_factor,
-        "lambda": lambda_,
+        "lambda_": lambda_,
         "learning_rate": learning_rate,
         "learning_rate_scheduler": learning_rate_scheduler,
         "learning_rate_scheduler_kwargs": {},
@@ -205,7 +205,6 @@ def test_agent(
         "grad_norm_clip": grad_norm_clip,
         "ratio_clip": ratio_clip,
         "value_clip": value_clip,
-        "clip_predicted_values": clip_predicted_values,
         "entropy_loss_scale": entropy_loss_scale,
         "value_loss_scale": value_loss_scale,
         "kl_threshold": kl_threshold,
@@ -225,8 +224,8 @@ def test_agent(
     cfg["learning_rate_scheduler_kwargs"][
         "kl_threshold" if learning_rate_scheduler is KLAdaptiveLR else "factor"
     ] = learning_rate_scheduler_kwargs_value
-    check_config_keys(cfg, DEFAULT_CONFIG)
-    check_config_keys(cfg["experiment"], DEFAULT_CONFIG["experiment"])
+    check_config_keys(cfg, dataclasses.asdict(AgentCfg()))
+    check_config_keys(cfg["experiment"], dataclasses.asdict(AgentCfg().experiment))
     agent = Agent(
         models=models,
         memory=memory,

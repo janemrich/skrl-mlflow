@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union
+from __future__ import annotations
 
 from functools import partial
 
@@ -18,7 +18,7 @@ def _sample(mean, std, key, iterator, shape):
 
 
 class GaussianNoise(Noise):
-    def __init__(self, *, mean: float, std: float, device: Optional[Union[str, jax.Device]] = None) -> None:
+    def __init__(self, *, mean: float, std: float, device: str | jax.Device | None = None) -> None:
         """Gaussian noise.
 
         :param mean: Mean of the normal distribution.
@@ -40,7 +40,7 @@ class GaussianNoise(Noise):
             self.mean = np.array(mean)
             self.std = np.array(std)
 
-    def sample(self, size: Tuple[int]) -> Union[np.ndarray, jax.Array]:
+    def sample(self, size: list[int]) -> np.ndarray | jax.Array:
         """Sample a Gaussian noise.
 
         :param size: Noise shape.

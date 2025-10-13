@@ -1,4 +1,6 @@
-from typing import List, Literal, Optional, Sequence, Union
+from __future__ import annotations
+
+from typing import Literal
 
 import torch
 
@@ -11,7 +13,7 @@ class RandomMemory(Memory):
         *,
         memory_size: int,
         num_envs: int = 1,
-        device: Optional[Union[str, torch.device]] = None,
+        device: str | torch.device | None = None,
         export: bool = False,
         export_format: Literal["pt", "npz", "csv"] = "pt",
         export_directory: str = "",
@@ -47,8 +49,8 @@ class RandomMemory(Memory):
         self._replacement = replacement
 
     def sample(
-        self, names: Sequence[str], *, batch_size: int, mini_batches: int = 1, sequence_length: int = 1
-    ) -> List[List[torch.Tensor]]:
+        self, names: list[str], *, batch_size: int, mini_batches: int = 1, sequence_length: int = 1
+    ) -> list[list[torch.Tensor]]:
         """Sample a batch from memory randomly.
 
         :param names: Tensors names from which to obtain the samples.

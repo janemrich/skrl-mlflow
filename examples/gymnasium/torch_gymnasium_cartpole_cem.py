@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 # import the skrl components to build the RL system
 from skrl import logger
-from skrl.agents.torch.cem import CEM, CEM_DEFAULT_CONFIG
+from skrl.agents.torch.cem import CEM, CEM_CFG
 from skrl.envs.wrappers.torch import wrap_env
 from skrl.memories.torch import RandomMemory
 from skrl.models.torch import CategoricalMixin, Model
@@ -78,13 +78,13 @@ for model in models.values():
 
 # configure and instantiate the agent (visit its documentation to see all the options)
 # https://skrl.readthedocs.io/en/latest/api/agents/cem.html#configuration-and-hyperparameters
-cfg = CEM_DEFAULT_CONFIG.copy()
-cfg["rollouts"] = 1000
-cfg["learning_starts"] = 100
+cfg = CEM_CFG()
+cfg.rollouts = 1000
+cfg.learning_starts = 100
 # logging to TensorBoard and write checkpoints (in timesteps)
-cfg["experiment"]["write_interval"] = "auto" if not args.eval else 0
-cfg["experiment"]["checkpoint_interval"] = "auto" if not args.eval else 0
-cfg["experiment"]["directory"] = f"runs/torch/{task_name}"
+cfg.experiment.write_interval = "auto" if not args.eval else 0
+cfg.experiment.checkpoint_interval = "auto" if not args.eval else 0
+cfg.experiment.directory = f"runs/torch/{task_name}"
 
 agent = CEM(
     models=models,

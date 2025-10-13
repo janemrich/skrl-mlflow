@@ -10,7 +10,7 @@ import skrl
 
 # project information
 project = "skrl"
-copyright = "2021-2024, Toni-SM"
+copyright = "2021-2025, Toni-SM"
 author = "Toni-SM"
 
 if skrl.__version__ != "unknown":
@@ -35,14 +35,14 @@ extensions = [
 # generate links to the documentation of objects in external projects
 intersphinx_mapping = {
     "python": ("https://docs.python.org/3/", None),
-    "gym": ("https://www.gymlibrary.dev/", None),
     "gymnasium": ("https://gymnasium.farama.org/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
-    "torch": ("https://pytorch.org/docs/stable/", None),
-    "jax": ("https://jax.readthedocs.io/en/latest/", None),
+    "torch": ("https://docs.pytorch.org/docs/stable/", None),
+    "jax": ("https://docs.jax.dev/en/latest/", None),
     "flax": ("https://flax.readthedocs.io/en/latest/", None),
     "flax-linen": ("https://flax-linen.readthedocs.io/en/latest/", None),
     "optax": ("https://optax.readthedocs.io/en/latest/", None),
+    "warp": ("https://nvidia.github.io/warp/", None),
 }
 
 pygments_style = "tango"
@@ -71,12 +71,19 @@ rst_prolog = """
 .. |jax| image:: /_static/data/logo-jax.svg
     :width: 28
 
+.. |warp| image:: /_static/data/logo-warp.svg
+    :width: 25
+
 .. |pytorch| image:: /_static/data/logo-torch.svg
     :width: 16
 
 .. |br| raw:: html
 
             <br>
+
+.. |hr| raw:: html
+
+            <hr>
 
 """
 
@@ -123,10 +130,10 @@ autodoc_mock_imports = [
     "jaxlib",
     "flax",
     "optax",
+    "warp",
     "tensorboard",
     "tqdm",
     "packaging",
-    "isaacgym",
 ]
 
 # copybutton ext

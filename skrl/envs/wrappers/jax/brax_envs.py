@@ -1,4 +1,6 @@
-from typing import Any, Tuple, Union
+from __future__ import annotations
+
+from typing import Any
 
 import gymnasium
 
@@ -40,11 +42,11 @@ class BraxWrapper(Wrapper):
         """Action space."""
         return convert_gym_space(self._unwrapped.action_space, squeeze_batch_dimension=True)
 
-    def step(self, actions: Union[np.ndarray, jax.Array]) -> Tuple[
-        Union[np.ndarray, jax.Array],
-        Union[np.ndarray, jax.Array],
-        Union[np.ndarray, jax.Array],
-        Union[np.ndarray, jax.Array],
+    def step(self, actions: np.ndarray | jax.Array) -> tuple[
+        np.ndarray | jax.Array,
+        np.ndarray | jax.Array,
+        np.ndarray | jax.Array,
+        np.ndarray | jax.Array,
         Any,
     ]:
         """Perform a step in the environment.
@@ -63,7 +65,7 @@ class BraxWrapper(Wrapper):
             truncated = np.asarray(jax.device_get(truncated))
         return observation, reward.reshape(-1, 1), terminated.reshape(-1, 1), truncated.reshape(-1, 1), info
 
-    def state(self) -> Union[Union[np.ndarray, jax.Array], None]:
+    def state(self) -> np.ndarray | jax.Array | None:
         """Get the environment state.
 
         :return: State.
@@ -78,7 +80,7 @@ class BraxWrapper(Wrapper):
             state = np.asarray(jax.device_get(state))
         return state
 
-    def reset(self) -> Tuple[Union[np.ndarray, jax.Array], Any]:
+    def reset(self) -> tuple[np.ndarray | jax.Array, dict[str, Any]]:
         """Reset the environment.
 
         :return: Observation, info.
@@ -92,6 +94,7 @@ class BraxWrapper(Wrapper):
     def render(self, *args, **kwargs) -> None:
         """Render the environment."""
         frame = self._env.render(mode="rgb_array")
+        frame = frame[0] if frame.ndim == 4 else frame
 
         # render the frame using OpenCV
         try:
@@ -105,5 +108,7 @@ class BraxWrapper(Wrapper):
 
     def close(self) -> None:
         """Close the environment."""
-        # TODO: check self._env.close() raises AttributeError: 'VectorGymWrapper' object has no attribute 'closed'
-        pass
+        try:
+            self._env.close()
+        except AttributeError:  # 'VectorGymWrapper' object has no attribute 'closed'
+            pass

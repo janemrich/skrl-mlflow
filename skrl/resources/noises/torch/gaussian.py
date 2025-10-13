@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union
+from __future__ import annotations
 
 import torch
 from torch.distributions import Normal
@@ -11,7 +11,7 @@ Normal.set_default_validate_args(False)
 
 
 class GaussianNoise(Noise):
-    def __init__(self, *, mean: float, std: float, device: Optional[Union[str, torch.device]] = None) -> None:
+    def __init__(self, *, mean: float, std: float, device: str | torch.device | None = None) -> None:
         """Gaussian noise.
 
         :param mean: Mean of the normal distribution.
@@ -29,7 +29,7 @@ class GaussianNoise(Noise):
             scale=torch.tensor(std, device=self.device, dtype=torch.float32),
         )
 
-    def sample(self, size: Union[Tuple[int], torch.Size]) -> torch.Tensor:
+    def sample(self, size: list[int] | torch.Size) -> torch.Tensor:
         """Sample a Gaussian noise.
 
         :param size: Noise shape.

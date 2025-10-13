@@ -1,7 +1,7 @@
-from typing import Any, Mapping, Optional, Tuple, Union
+from __future__ import annotations
 
-import copy
-import math
+from typing import Any
+
 import gymnasium
 from packaging import version
 
@@ -14,68 +14,20 @@ from skrl.memories.torch import Memory
 from skrl.models.torch import Model
 from skrl.utils import ScopedTimer
 
-
-# fmt: off
-# [start-config-dict-torch]
-DQN_DEFAULT_CONFIG = {
-    "gradient_steps": 1,            # gradient steps
-    "batch_size": 64,               # training batch size
-
-    "discount_factor": 0.99,        # discount factor (gamma)
-    "polyak": 0.005,                # soft update hyperparameter (tau)
-
-    "learning_rate": 1e-3,                  # learning rate
-    "learning_rate_scheduler": None,        # learning rate scheduler class (see torch.optim.lr_scheduler)
-    "learning_rate_scheduler_kwargs": {},   # learning rate scheduler's kwargs (e.g. {"step_size": 1e-3})
-
-    "observation_preprocessor": None,       # observation preprocessor class (see skrl.resources.preprocessors)
-    "observation_preprocessor_kwargs": {},  # observation preprocessor's kwargs (e.g. {"size": env.observation_space})
-    "state_preprocessor": None,             # state preprocessor class (see skrl.resources.preprocessors)
-    "state_preprocessor_kwargs": {},        # state preprocessor's kwargs (e.g. {"size": env.state_space})
-
-    "random_timesteps": 0,          # random exploration steps
-    "learning_starts": 0,           # learning starts after this many steps
-
-    "update_interval": 1,           # agent update interval
-    "target_update_interval": 10,   # target network update interval
-
-    "exploration": {
-        "initial_epsilon": 1.0,       # initial epsilon for epsilon-greedy exploration
-        "final_epsilon": 0.05,        # final epsilon for epsilon-greedy exploration
-        "timesteps": 1000,            # timesteps for epsilon-greedy decay
-    },
-
-    "rewards_shaper": None,         # rewards shaping function: Callable(reward, timestep, timesteps) -> reward
-
-    "mixed_precision": False,       # enable automatic mixed precision for higher performance
-
-    "experiment": {
-        "directory": "",            # experiment's parent directory
-        "experiment_name": "",      # experiment name
-        "write_interval": "auto",   # TensorBoard writing interval (timesteps)
-
-        "checkpoint_interval": "auto",      # interval for checkpoints (timesteps)
-        "store_separately": False,          # whether to store checkpoints separately
-
-        "wandb": False,             # whether to use Weights & Biases
-        "wandb_kwargs": {}          # wandb kwargs (see https://docs.wandb.ai/ref/python/init)
-    }
-}
-# [end-config-dict-torch]
-# fmt: on
+from .dqn_cfg import DQN_CFG
 
 
 class DQN(Agent):
     def __init__(
         self,
         *,
-        models: Optional[Mapping[str, Model]] = None,
-        memory: Optional[Memory] = None,
-        observation_space: Optional[gymnasium.Space] = None,
-        state_space: Optional[gymnasium.Space] = None,
-        action_space: Optional[gymnasium.Space] = None,
-        device: Optional[Union[str, torch.device]] = None,
-        cfg: Optional[dict] = None,
+        models: dict[str, Model],
+        memory: Memory | None = None,
+        observation_space: gymnasium.Space | None = None,
+        state_space: gymnasium.Space | None = None,
+        action_space: gymnasium.Space | None = None,
+        device: str | torch.device | None = None,
+        cfg: DQN_CFG | dict = {},
     ) -> None:
         """Deep Q-Network (DQN).
 
@@ -91,8 +43,7 @@ class DQN(Agent):
 
         :raises KeyError: If a configuration key is missing.
         """
-        _cfg = copy.deepcopy(DQN_DEFAULT_CONFIG)
-        _cfg.update(cfg if cfg is not None else {})
+        self.cfg: DQN_CFG
         super().__init__(
             models=models,
             memory=memory,
@@ -100,7 +51,7 @@ class DQN(Agent):
             state_space=state_space,
             action_space=action_space,
             device=device,
-            cfg=_cfg,
+            cfg=DQN_CFG(**cfg) if isinstance(cfg, dict) else cfg,
         )
 
         # models
@@ -117,75 +68,49 @@ class DQN(Agent):
             if self.q_network is not None:
                 self.q_network.broadcast_parameters()
 
-        # configuration
-        self._gradient_steps = self.cfg["gradient_steps"]
-        self._batch_size = self.cfg["batch_size"]
-
-        self._discount_factor = self.cfg["discount_factor"]
-        self._polyak = self.cfg["polyak"]
-
-        self._learning_rate = self.cfg["learning_rate"]
-        self._learning_rate_scheduler = self.cfg["learning_rate_scheduler"]
-
-        self._observation_preprocessor = self.cfg["observation_preprocessor"]
-        self._state_preprocessor = self.cfg["state_preprocessor"]
-
-        self._random_timesteps = self.cfg["random_timesteps"]
-        self._learning_starts = self.cfg["learning_starts"]
-
-        self._update_interval = self.cfg["update_interval"]
-        self._target_update_interval = self.cfg["target_update_interval"]
-
-        self._exploration_initial_epsilon = self.cfg["exploration"]["initial_epsilon"]
-        self._exploration_final_epsilon = self.cfg["exploration"]["final_epsilon"]
-        self._exploration_timesteps = self.cfg["exploration"]["timesteps"]
-
-        self._rewards_shaper = self.cfg["rewards_shaper"]
-
-        self._mixed_precision = self.cfg["mixed_precision"]
-
         # set up automatic mixed precision
-        self._device_type = torch.device(device).type
+        self._device_type = torch.device(self.device).type
         if version.parse(torch.__version__) >= version.parse("2.4"):
-            self.scaler = torch.amp.GradScaler(device=self._device_type, enabled=self._mixed_precision)
+            self.scaler = torch.amp.GradScaler(device=self._device_type, enabled=self.cfg.mixed_precision)
         else:
-            self.scaler = torch.cuda.amp.GradScaler(enabled=self._mixed_precision)
+            self.scaler = torch.cuda.amp.GradScaler(enabled=self.cfg.mixed_precision)
 
         # set up optimizer and learning rate scheduler
         if self.q_network is not None:
-            self.optimizer = torch.optim.Adam(self.q_network.parameters(), lr=self._learning_rate)
-            if self._learning_rate_scheduler is not None:
-                self.scheduler = self._learning_rate_scheduler(
-                    self.optimizer, **self.cfg["learning_rate_scheduler_kwargs"]
-                )
-
+            # - optimizer
+            self.optimizer = torch.optim.Adam(self.q_network.parameters(), lr=self.cfg.learning_rate)
             self.checkpoint_modules["optimizer"] = self.optimizer
+            # - learning rate scheduler
+            self.scheduler = self.cfg.learning_rate_scheduler
+            if self.scheduler is not None:
+                self.scheduler = self.cfg.learning_rate_scheduler(
+                    self.optimizer, **self.cfg.learning_rate_scheduler_kwargs
+                )
 
         # set up target networks
         if self.target_q_network is not None:
-            # freeze target networks with respect to optimizers (update via .update_parameters())
+            # - freeze target networks with respect to optimizers (update via .update_parameters())
             self.target_q_network.freeze_parameters(True)
-
-            # update target networks (hard update)
+            # - update target networks (hard update)
             self.target_q_network.update_parameters(self.q_network, polyak=1)
 
         # set up preprocessors
         # - observations
-        if self._observation_preprocessor:
-            self._observation_preprocessor = self._observation_preprocessor(
-                **self.cfg["observation_preprocessor_kwargs"]
+        if self.cfg.observation_preprocessor:
+            self._observation_preprocessor = self.cfg.observation_preprocessor(
+                **self.cfg.observation_preprocessor_kwargs
             )
             self.checkpoint_modules["observation_preprocessor"] = self._observation_preprocessor
         else:
             self._observation_preprocessor = self._empty_preprocessor
         # - states
-        if self._state_preprocessor:
-            self._state_preprocessor = self._state_preprocessor(**self.cfg["state_preprocessor_kwargs"])
+        if self.cfg.state_preprocessor:
+            self._state_preprocessor = self.cfg.state_preprocessor(**self.cfg.state_preprocessor_kwargs)
             self.checkpoint_modules["state_preprocessor"] = self._state_preprocessor
         else:
             self._state_preprocessor = self._empty_preprocessor
 
-    def init(self, *, trainer_cfg: Optional[Mapping[str, Any]] = None) -> None:
+    def init(self, *, trainer_cfg: dict[str, Any] | None = None) -> None:
         """Initialize the agent.
 
         :param trainer_cfg: Trainer configuration.
@@ -215,9 +140,12 @@ class DQN(Agent):
             "truncated",
         ]
 
+        # create temporary variables needed for storage and computation
+        self._update_counter = 0
+
     def act(
-        self, observations: torch.Tensor, states: Union[torch.Tensor, None], *, timestep: int, timesteps: int
-    ) -> Tuple[torch.Tensor, Mapping[str, Union[torch.Tensor, Any]]]:
+        self, observations: torch.Tensor, states: torch.Tensor | None, *, timestep: int, timesteps: int
+    ) -> tuple[torch.Tensor, dict[str, Any]]:
         """Process the environment's observations/states to make a decision (actions) using the main policy.
 
         :param observations: Environment observations.
@@ -233,23 +161,20 @@ class DQN(Agent):
             "states": self._state_preprocessor(states),
         }
 
-        if not self._exploration_timesteps:
+        if self.cfg.exploration_scheduler is None:
             q_values, outputs = self.q_network.act(inputs, role="q_network")
             return torch.argmax(q_values, dim=1, keepdim=True), outputs
 
         # sample random actions
         actions, outputs = self.q_network.random_act(inputs, role="q_network")
-        if timestep < self._random_timesteps:
+        if timestep < self.cfg.random_timesteps:
             return actions, outputs
 
         # sample actions with epsilon-greedy policy
-        epsilon = self._exploration_final_epsilon + (
-            self._exploration_initial_epsilon - self._exploration_final_epsilon
-        ) * math.exp(-1.0 * timestep / self._exploration_timesteps)
-
+        epsilon = self.cfg.exploration_scheduler(timestep, timesteps)
         indexes = (torch.rand(actions.shape[0], device=self.device) >= epsilon).nonzero().view(-1)
         if indexes.numel():
-            with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
+            with torch.autocast(device_type=self._device_type, enabled=self.cfg.mixed_precision):
                 inputs = {k: None if v is None else v[indexes] for k, v in inputs.items()}
                 actions[indexes] = torch.argmax(self.q_network.act(inputs, role="q_network")[0], dim=1, keepdim=True)
 
@@ -303,8 +228,8 @@ class DQN(Agent):
 
         if self.memory is not None:
             # reward shaping
-            if self._rewards_shaper is not None:
-                rewards = self._rewards_shaper(rewards, timestep, timesteps)
+            if self.cfg.rewards_shaper is not None:
+                rewards = self.cfg.rewards_shaper(rewards, timestep, timesteps)
 
             self.memory.add_samples(
                 observations=observations,
@@ -331,7 +256,7 @@ class DQN(Agent):
         :param timestep: Current timestep.
         :param timesteps: Number of timesteps.
         """
-        if timestep >= self._learning_starts and not timestep % self._update_interval:
+        if timestep >= self.cfg.learning_starts and not timestep % self.cfg.update_interval:
             with ScopedTimer() as timer:
                 self.enable_models_training_mode(True)
                 self.update(timestep=timestep, timesteps=timesteps)
@@ -349,7 +274,7 @@ class DQN(Agent):
         """
 
         # gradient steps
-        for gradient_step in range(self._gradient_steps):
+        for gradient_step in range(self.cfg.gradient_steps):
 
             # sample a batch from memory
             (
@@ -361,9 +286,9 @@ class DQN(Agent):
                 sampled_next_states,
                 sampled_terminated,
                 sampled_truncated,
-            ) = self.memory.sample(names=self.tensors_names, batch_size=self._batch_size)[0]
+            ) = self.memory.sample(names=self.tensors_names, batch_size=self.cfg.batch_size)[0]
 
-            with torch.autocast(device_type=self._device_type, enabled=self._mixed_precision):
+            with torch.autocast(device_type=self._device_type, enabled=self.cfg.mixed_precision):
                 inputs = {
                     "observations": self._observation_preprocessor(sampled_observations, train=True),
                     "states": self._state_preprocessor(sampled_states, train=True),
@@ -380,7 +305,7 @@ class DQN(Agent):
                     target_q_values = torch.max(next_q_values, dim=-1, keepdim=True)[0]
                     target_values = (
                         sampled_rewards
-                        + self._discount_factor
+                        + self.cfg.discount_factor
                         * (sampled_terminated | sampled_truncated).logical_not()
                         * target_q_values
                     )
@@ -403,11 +328,12 @@ class DQN(Agent):
             self.scaler.update()
 
             # update target network
-            if not timestep % self._target_update_interval:
-                self.target_q_network.update_parameters(self.q_network, polyak=self._polyak)
+            self._update_counter += 1
+            if not self._update_counter % self.cfg.target_update_interval:
+                self.target_q_network.update_parameters(self.q_network, polyak=self.cfg.polyak)
 
             # update learning rate
-            if self._learning_rate_scheduler:
+            if self.scheduler:
                 self.scheduler.step()
 
             # record data
@@ -417,5 +343,5 @@ class DQN(Agent):
             self.track_data("Target / Target (min)", torch.min(target_values).item())
             self.track_data("Target / Target (mean)", torch.mean(target_values).item())
 
-            if self._learning_rate_scheduler:
+            if self.scheduler:
                 self.track_data("Learning / Learning rate", self.scheduler.get_last_lr()[0])

@@ -1,4 +1,6 @@
-from typing import Any, Tuple, Union
+from __future__ import annotations
+
+from typing import Any
 
 import collections
 import gymnasium
@@ -27,16 +29,18 @@ class DeepMindWrapper(Wrapper):
         from dm_env import specs
 
         self._specs = specs
+        self._observation_space = self._spec_to_space(self._env.observation_spec())
+        self._action_space = self._spec_to_space(self._env.action_spec())
 
     @property
     def observation_space(self) -> gymnasium.Space:
         """Observation space."""
-        return self._spec_to_space(self._env.observation_spec())
+        return self._observation_space
 
     @property
     def action_space(self) -> gymnasium.Space:
         """Action space."""
-        return self._spec_to_space(self._env.action_spec())
+        return self._action_space
 
     def _spec_to_space(self, spec: Any) -> gymnasium.Space:
         """Convert the DeepMind spec to a gymnasium space.
@@ -68,7 +72,7 @@ class DeepMindWrapper(Wrapper):
         else:
             raise ValueError(f"Spec type {type(spec)} not supported. Please report this issue")
 
-    def step(self, actions: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Any]:
+    def step(self, actions: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, Any]:
         """Perform a step in the environment.
 
         :param actions: The actions to perform.
@@ -95,7 +99,7 @@ class DeepMindWrapper(Wrapper):
             info,
         )
 
-    def state(self) -> Union[torch.Tensor, None]:
+    def state(self) -> torch.Tensor | None:
         """Get the environment state.
 
         :return: State.
@@ -107,7 +111,7 @@ class DeepMindWrapper(Wrapper):
         except:
             return None
 
-    def reset(self) -> Tuple[torch.Tensor, Any]:
+    def reset(self) -> tuple[torch.Tensor, dict[str, Any]]:
         """Reset the environment.
 
         :return: The state of the environment.

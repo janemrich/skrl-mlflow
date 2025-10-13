@@ -7,7 +7,7 @@ import torch.nn as nn
 
 # import the skrl components to build the RL system
 from skrl import logger
-from skrl.agents.torch.sarsa import SARSA, SARSA_DEFAULT_CONFIG
+from skrl.agents.torch.sarsa import SARSA, SARSA_CFG
 from skrl.envs.wrappers.torch import wrap_env
 from skrl.trainers.torch import SequentialTrainer
 from skrl.utils import set_seed
@@ -58,13 +58,13 @@ models["policy"] = tabular_model(
 
 # configure and instantiate the agent (visit its documentation to see all the options)
 # https://skrl.readthedocs.io/en/latest/api/agents/sarsa.html#configuration-and-hyperparameters
-cfg = SARSA_DEFAULT_CONFIG.copy()
-cfg["discount_factor"] = 0.999
-cfg["alpha"] = 0.4
+cfg = SARSA_CFG()
+cfg.discount_factor = 0.999
+cfg.alpha = 0.4
 # logging to TensorBoard and write checkpoints (in timesteps)
-cfg["experiment"]["write_interval"] = "auto" if not args.eval else 0
-cfg["experiment"]["checkpoint_interval"] = "auto" if not args.eval else 0
-cfg["experiment"]["directory"] = f"runs/torch/{task_name}"
+cfg.experiment.write_interval = "auto" if not args.eval else 0
+cfg.experiment.checkpoint_interval = "auto" if not args.eval else 0
+cfg.experiment.directory = f"runs/torch/{task_name}"
 
 agent = SARSA(
     models=models,

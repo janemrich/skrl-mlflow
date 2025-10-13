@@ -1,5 +1,6 @@
-from typing import Optional, Sequence
+from __future__ import annotations
 
+import argparse
 import sys
 
 from skrl import logger
@@ -22,11 +23,13 @@ def _print_cfg(d, indent=0) -> None:
 
 
 def load_isaaclab_env(
+    *,
     task_name: str = "",
-    num_envs: Optional[int] = None,
-    headless: Optional[bool] = None,
-    cli_args: Sequence[str] = [],
+    num_envs: int | None = None,
+    headless: bool | None = None,
+    cli_args: list[str] = [],
     show_cfg: bool = True,
+    parser: argparse.ArgumentParser | None = None,
 ):
     """Load an Isaac Lab environment.
 
@@ -34,11 +37,11 @@ def load_isaaclab_env(
 
     This function includes the definition and parsing of command line arguments used by Isaac Lab:
 
-    - ``--headless``: Force display off at all times
-    - ``--cpu``: Use CPU pipeline
     - ``--num_envs``: Number of environments to simulate
     - ``--task``: Name of the task
-    - ``--num_envs``: Seed used for the environment
+    - ``--seed``: Seed used for the environment
+    - ``--disable_fabric``: Disable fabric and use USD I/O operations.
+    - ``--distributed``: Run training with multiple GPUs or nodes
 
     :param task_name: The name of the task.
         If not specified, the task name is taken from the command line argument (``--task TASK_NAME``).
@@ -51,12 +54,12 @@ def load_isaaclab_env(
         Command line argument has priority over function parameter if both are specified
     :param cli_args: Isaac Lab configuration and command line arguments.
     :param show_cfg: Whether to print the configuration.
+    :param parser: The argument parser to use. If not specified, a new argument parser will be created.
 
     :return: Isaac Lab environment.
 
     :raises ValueError: The task name has not been defined, neither by the function parameter nor by the command line arguments.
     """
-    import argparse
     import atexit
     import gymnasium
 
@@ -118,23 +121,20 @@ def load_isaaclab_env(
     sys.argv += cli_args
 
     # parse arguments
-    parser = argparse.ArgumentParser("Isaac Lab: Omniverse Robotics Environments!")
-    parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate.")
-    parser.add_argument("--task", type=str, default=None, help="Name of the task.")
+    if parser is None:
+        parser = argparse.ArgumentParser("Isaac Lab")
+    parser.add_argument("--num_envs", type=int, default=None, help="Number of environments to simulate")
+    parser.add_argument("--task", type=str, default=None, help="Name of the task")
     parser.add_argument("--seed", type=int, default=None, help="Seed used for the environment")
-    parser.add_argument("--video", action="store_true", default=False, help="Record videos during training.")
     parser.add_argument(
-        "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations."
+        "--disable_fabric", action="store_true", default=False, help="Disable fabric and use USD I/O operations"
     )
     parser.add_argument(
-        "--distributed", action="store_true", default=False, help="Run training with multiple GPUs or nodes."
+        "--distributed", action="store_true", default=False, help="Run training with multiple GPUs or nodes"
     )
 
     # launch the simulation app
-    try:
-        from omni.isaac.lab.app import AppLauncher
-    except ModuleNotFoundError:
-        from isaaclab.app import AppLauncher
+    from isaaclab.app import AppLauncher
 
     AppLauncher.add_app_launcher_args(parser)
     args = parser.parse_args()
@@ -144,14 +144,12 @@ def load_isaaclab_env(
     def close_the_simulator():
         app_launcher.app.close()
 
-    try:
-        import omni.isaac.lab_tasks  # type: ignore
-        from omni.isaac.lab_tasks.utils import parse_env_cfg  # type: ignore
-    except ModuleNotFoundError:
-        import isaaclab_tasks  # type: ignore
-        from isaaclab_tasks.utils import parse_env_cfg  # type: ignore
+    import isaaclab_tasks  # type: ignore
+    from isaaclab_tasks.utils import parse_env_cfg  # type: ignore
 
     cfg = parse_env_cfg(args.task, device=args.device, num_envs=args.num_envs, use_fabric=not args.disable_fabric)
+    if args.distributed:
+        cfg.sim.device = f"cuda:{app_launcher.local_rank}"
 
     # print config
     if show_cfg:
@@ -162,6 +160,6 @@ def load_isaaclab_env(
             pass
 
     # load environment
-    env = gymnasium.make(args.task, cfg=cfg, render_mode="rgb_array" if args.video else None)
+    env = gymnasium.make(args.task, cfg=cfg)
 
     return env
