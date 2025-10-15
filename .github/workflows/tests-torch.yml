@@ -24,6 +24,7 @@ jobs:
   torch-minimum-components:
     name: Minimum requirements (components)
     runs-on: ubuntu-22.04
+    if: github.event.pull_request.draft == false
     steps:
     # setup
     - uses: actions/checkout@v4
@@ -75,6 +76,7 @@ jobs:
   torch-minimum-envs:
     name: Minimum requirements (envs)
     runs-on: ubuntu-22.04
+    if: github.event.pull_request.draft == false
     steps:
     # setup
     - uses: actions/checkout@v4
@@ -129,6 +131,7 @@ jobs:
   torch-minimum-utils:
     name: Minimum requirements (utils)
     runs-on: ubuntu-22.04
+    if: github.event.pull_request.draft == false
     steps:
     # setup
     - uses: actions/checkout@v4
@@ -189,6 +192,7 @@ jobs:
       matrix:
         os: ["ubuntu-latest", "windows-latest"]
     runs-on: ${{ matrix.os }}
+    if: github.event.pull_request.draft == false
     steps:
     # setup
     - uses: actions/checkout@v4
@@ -244,6 +248,7 @@ jobs:
       matrix:
         os: ["ubuntu-latest", "windows-latest"]
     runs-on: ${{ matrix.os }}
+    if: github.event.pull_request.draft == false
     steps:
     # setup
     - uses: actions/checkout@v4
@@ -304,6 +309,7 @@ jobs:
       matrix:
         os: ["ubuntu-latest", "windows-latest"]
     runs-on: ${{ matrix.os }}
+    if: github.event.pull_request.draft == false
     steps:
     # setup
     - uses: actions/checkout@v4

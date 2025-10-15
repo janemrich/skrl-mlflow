@@ -24,6 +24,7 @@ jobs:
   jax-minimum-components:
     name: Minimum requirements (components)
     runs-on: ubuntu-22.04
+    if: github.event.pull_request.draft == false
     steps:
     # setup
     - uses: actions/checkout@v4
@@ -75,6 +76,7 @@ jobs:
   jax-minimum-envs:
     name: Minimum requirements (envs)
     runs-on: ubuntu-22.04
+    if: github.event.pull_request.draft == false
     steps:
     # setup
     - uses: actions/checkout@v4
@@ -125,6 +127,7 @@ jobs:
   jax-minimum-utils:
     name: Minimum requirements (utils)
     runs-on: ubuntu-22.04
+    if: github.event.pull_request.draft == false
     steps:
     # setup
     - uses: actions/checkout@v4
@@ -181,6 +184,7 @@ jobs:
   jax-latest-components:
     name: Latest requirements (components)
     runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
     steps:
     # setup
     - uses: actions/checkout@v4
@@ -231,6 +235,7 @@ jobs:
   jax-latest-envs:
     name: Latest requirements (envs)
     runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
     steps:
     # setup
     - uses: actions/checkout@v4
@@ -280,6 +285,7 @@ jobs:
   jax-latest-utils:
     name: Latest requirements (utils)
     runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false
     steps:
     # setup
     - uses: actions/checkout@v4
