@@ -437,15 +437,15 @@ class Runner:
             }
         # multi-agent configuration and instantiation
         elif agent_class in ["ippo", "mappo"]:
-            agent_cfg = self._component(f"{agent_class}_CFG").copy()
-            agent_cfg.update(self._process_cfg(cfg["agent"]))
-            agent_cfg["observation_preprocessor_kwargs"].update(
+            agent_cfg = dataclasses.asdict(self._component(f"{agent_class}_CFG")(**self._process_cfg(cfg["agent"])))
+            print(agent_cfg)
+            agent_cfg.get("observation_preprocessor_kwargs", {}).update(
                 {agent_id: {"size": observation_spaces[agent_id], "device": device} for agent_id in possible_agents}
             )
-            agent_cfg["state_preprocessor_kwargs"].update(
+            agent_cfg.get("state_preprocessor_kwargs", {}).update(
                 {agent_id: {"size": state_spaces[agent_id], "device": device} for agent_id in possible_agents}
             )
-            agent_cfg["value_preprocessor_kwargs"].update({"size": 1, "device": device})
+            agent_cfg.get("value_preprocessor_kwargs", {}).update({"size": 1, "device": device})
             agent_kwargs = {
                 "models": models,
                 "memories": memories,
