@@ -57,6 +57,15 @@ jobs:
           --cov-report term:skip-covered \
           --cov-report html:torch-minimum-components-agents-coverage.html \
           tests/agents/torch
+    - name: Run tests (multi-agents)
+      run: |
+        pytest \
+          --self-contained-html \
+          --html=torch-minimum-components-multi-agents-pytest.html \
+          --cov=skrl/multi_agents/torch \
+          --cov-report term:skip-covered \
+          --cov-report html:torch-minimum-components-multi-agents-coverage.html \
+          tests/multi_agents/torch
     - name: Run tests (trainers)
       run: |
         pytest \
@@ -225,6 +234,15 @@ jobs:
           --cov-report term:skip-covered \
           --cov-report html:torch-latest-components-agents-coverage.html \
           tests/agents/torch
+    - name: Run tests (multi-agents)
+      run: |
+        pytest \
+          --self-contained-html \
+          --html=torch-latest-components-multi-agents-pytest.html \
+          --cov=skrl/multi_agents/torch \
+          --cov-report term:skip-covered \
+          --cov-report html:torch-latest-components-multi-agents-coverage.html \
+          tests/multi_agents/torch
     - name: Run tests (trainers)
       run: |
         pytest \

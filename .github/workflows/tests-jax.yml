@@ -57,6 +57,15 @@ jobs:
           --cov-report term:skip-covered \
           --cov-report html:jax-minimum-components-agents-coverage.html \
           tests/agents/jax
+    - name: Run tests (multi-agents)
+      run: |
+        pytest \
+          --self-contained-html \
+          --html=jax-minimum-components-multi-agents-pytest.html \
+          --cov=skrl/multi_agents/jax \
+          --cov-report term:skip-covered \
+          --cov-report html:jax-minimum-components-multi-agents-coverage.html \
+          tests/multi_agents/jax
     - name: Run tests (trainers)
       run: |
         pytest \
@@ -216,6 +225,15 @@ jobs:
           --cov-report term:skip-covered \
           --cov-report html:jax-latest-components-agents-coverage.html \
           tests/agents/jax
+    - name: Run tests (multi-agents)
+      run: |
+        pytest \
+          --self-contained-html \
+          --html=jax-latest-components-multi-agents-pytest.html \
+          --cov=skrl/multi_agents/jax \
+          --cov-report term:skip-covered \
+          --cov-report html:jax-latest-components-multi-agents-coverage.html \
+          tests/multi_agents/jax
     - name: Run tests (trainers)
       run: |
         pytest \
