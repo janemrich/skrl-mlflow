@@ -208,8 +208,8 @@ class Runner:
         multi_agent = isinstance(env, MultiAgentEnvWrapper)
         device = env.device
         possible_agents = env.possible_agents if multi_agent else ["agent"]
-        state_spaces = env.state_spaces if multi_agent else {"agent": env.state_space}
         observation_spaces = env.observation_spaces if multi_agent else {"agent": env.observation_space}
+        state_spaces = env.state_spaces if multi_agent else {"agent": env.state_space}
         action_spaces = env.action_spaces if multi_agent else {"agent": env.action_space}
 
         agent_class = cfg.get("agent", {}).get("class")
@@ -247,8 +247,6 @@ class Runner:
                     model_class = self._component(model_class)
                     # get specific spaces according to agent/model cfg
                     observation_space = observation_spaces[agent_id]
-                    if agent_class == "mappo" and role == "value":
-                        observation_space = state_spaces[agent_id]
                     if agent_class == "amp" and role == "discriminator":
                         try:
                             observation_space = env.amp_observation_space
@@ -259,6 +257,7 @@ class Runner:
                     # print model source
                     source = model_class(
                         observation_space=observation_space,
+                        state_space=state_spaces[agent_id],
                         action_space=action_spaces[agent_id],
                         device=device,
                         **self._process_cfg(models_cfg[role]),
@@ -272,6 +271,7 @@ class Runner:
                     # instantiate model
                     models[agent_id][role] = model_class(
                         observation_space=observation_space,
+                        state_space=state_spaces[agent_id],
                         action_space=action_spaces[agent_id],
                         device=device,
                         **self._process_cfg(models_cfg[role]),
@@ -301,6 +301,7 @@ class Runner:
                 # print model source
                 source = model_class(
                     observation_space=observation_spaces[agent_id],
+                    state_space=state_spaces[agent_id],
                     action_space=action_spaces[agent_id],
                     device=device,
                     structure=structure,
@@ -316,6 +317,7 @@ class Runner:
                 # instantiate model
                 models[agent_id][roles[0]] = model_class(
                     observation_space=observation_spaces[agent_id],
+                    state_space=state_spaces[agent_id],
                     action_space=action_spaces[agent_id],
                     device=device,
                     structure=structure,
@@ -438,7 +440,6 @@ class Runner:
         # multi-agent configuration and instantiation
         elif agent_class in ["ippo", "mappo"]:
             agent_cfg = dataclasses.asdict(self._component(f"{agent_class}_CFG")(**self._process_cfg(cfg["agent"])))
-            print(agent_cfg)
             agent_cfg.get("observation_preprocessor_kwargs", {}).update(
                 {agent_id: {"size": observation_spaces[agent_id], "device": device} for agent_id in possible_agents}
             )
