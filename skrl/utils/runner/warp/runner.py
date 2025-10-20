@@ -314,6 +314,10 @@ class Runner:
         state_spaces = env.state_spaces if multi_agent else {"agent": env.state_space}
         action_spaces = env.action_spaces if multi_agent else {"agent": env.action_space}
 
+        # override cfg
+        if cfg.get("agent", {}).get("mixed_precision") is not None:
+            del cfg["agent"]["mixed_precision"]  # mixed precision is not supported in Warp
+
         # get agent class
         if "agent" not in cfg:
             raise ValueError(f"The 'agent' field is not defined in the specified configuration")
@@ -336,50 +340,7 @@ class Runner:
         }
 
         # single-agent configuration and instantiation
-        if agent_class in ["amp"]:
-            agent_id = possible_agents[0]
-            try:
-                amp_observation_space = env.amp_observation_space
-            except Exception as e:
-                logger.warning(
-                    "Unable to get AMP space via 'env.amp_observation_space'. Using 'env.observation_space' instead"
-                )
-                amp_observation_space = observation_spaces[agent_id]
-            agent_cfg = dataclasses.asdict(self._component(f"{agent_class}_CFG")(**self._process_cfg(cfg["agent"])))
-            agent_cfg.get("observation_preprocessor_kwargs", {}).update(
-                {"size": observation_spaces[agent_id], "device": device}
-            )
-            agent_cfg.get("state_preprocessor_kwargs", {}).update({"size": state_spaces[agent_id], "device": device})
-            agent_cfg.get("value_preprocessor_kwargs", {}).update({"size": 1, "device": device})
-            agent_cfg.get("amp_observation_preprocessor_kwargs", {}).update(
-                {"size": amp_observation_space, "device": device}
-            )
-
-            motion_dataset = None
-            if "motion_dataset" in cfg:
-                if "class" not in cfg["motion_dataset"]:
-                    raise ValueError(f"The 'motion_dataset.class' field is not defined in the specified configuration")
-                motion_dataset_class = self._component(cfg["motion_dataset"]["class"])
-                motion_dataset = motion_dataset_class(device=device, **self._process_cfg(cfg["motion_dataset"]))
-            reply_buffer = None
-            if "reply_buffer" in cfg:
-                if "class" not in cfg["reply_buffer"]:
-                    raise ValueError(f"The 'reply_buffer.class' field is not defined in the specified configuration")
-                reply_buffer_class = self._component(cfg["reply_buffer"]["class"])
-                reply_buffer = reply_buffer_class(device=device, **self._process_cfg(cfg["reply_buffer"]))
-
-            agent_kwargs = {
-                "models": models[agent_id],
-                "memory": memories[agent_id],
-                "observation_space": observation_spaces[agent_id],
-                "state_space": state_spaces[agent_id],
-                "action_space": action_spaces[agent_id],
-                "amp_observation_space": amp_observation_space,
-                "motion_dataset": motion_dataset,
-                "reply_buffer": reply_buffer,
-                "collect_reference_motions": lambda num_samples: env.collect_reference_motions(num_samples),
-            }
-        elif agent_class in ["a2c", "cem", "ddpg", "ddqn", "dqn", "ppo", "rpo", "sac", "td3", "trpo"]:
+        if agent_class in ["ddpg", "ppo", "sac"]:
             agent_id = possible_agents[0]
             agent_cfg = dataclasses.asdict(self._component(f"{agent_class}_CFG")(**self._process_cfg(cfg["agent"])))
             agent_cfg.get("observation_preprocessor_kwargs", {}).update(
@@ -398,22 +359,7 @@ class Runner:
             }
         # multi-agent configuration and instantiation
         elif agent_class in ["ippo", "mappo"]:
-            agent_cfg = dataclasses.asdict(self._component(f"{agent_class}_CFG")(**self._process_cfg(cfg["agent"])))
-            agent_cfg.get("observation_preprocessor_kwargs", {}).update(
-                {agent_id: {"size": observation_spaces[agent_id], "device": device} for agent_id in possible_agents}
-            )
-            agent_cfg.get("state_preprocessor_kwargs", {}).update(
-                {agent_id: {"size": state_spaces[agent_id], "device": device} for agent_id in possible_agents}
-            )
-            agent_cfg.get("value_preprocessor_kwargs", {}).update({"size": 1, "device": device})
-            agent_kwargs = {
-                "models": models,
-                "memories": memories,
-                "observation_spaces": observation_spaces,
-                "state_spaces": state_spaces,
-                "action_spaces": action_spaces,
-                "possible_agents": possible_agents,
-            }
+            raise NotImplementedError
         return self._component(agent_class)(cfg=agent_cfg, device=device, **agent_kwargs)
 
     def _generate_trainer(self, env: Wrapper | MultiAgentEnvWrapper, cfg: dict[str, Any], agent: Agent) -> Trainer:
