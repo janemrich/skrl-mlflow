@@ -15,6 +15,7 @@ from skrl.resources.preprocessors.warp import RunningStandardScaler  # noqa
 from skrl.resources.schedulers.warp import KLAdaptiveLR  # noqa
 from skrl.trainers.warp import Trainer
 from skrl.utils import set_seed
+from skrl.utils.framework.warp import scalar_mul
 
 
 class Runner:
@@ -142,9 +143,8 @@ class Runner:
         if "rewards_shaper_scale" in cfg:
             scale = cfg["rewards_shaper_scale"]
             if scale is not None and scale != 1.0:
-                cfg["rewards_shaper"] = lambda rewards, *args, **kwargs: rewards * scale
+                cfg["rewards_shaper"] = lambda rewards, *args, **kwargs: scalar_mul(rewards, scale)
             del cfg["rewards_shaper_scale"]
-            cfg["rewards_shaper"] = None
 
         # backward compatibility
         if "lambda" in cfg:
