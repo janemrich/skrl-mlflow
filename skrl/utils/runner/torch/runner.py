@@ -4,6 +4,7 @@ from typing import Any, Literal, Type
 
 import copy
 import dataclasses
+import math  # noqa
 
 from skrl import logger
 from skrl.agents.torch import Agent
@@ -30,8 +31,6 @@ class Runner:
 
         # set random seed
         set_seed(self._cfg.get("seed", None))
-
-        self._cfg["agent"]["rewards_shaper"] = None  # FIXME: avoid 'dictionary changed size during iteration'
 
         self._models = self._generate_models(self._env, copy.deepcopy(self._cfg))
         self._agent = self._generate_agent(self._env, copy.deepcopy(self._cfg), self._models)
@@ -157,15 +156,9 @@ class Runner:
             "state_preprocessor",
             "value_preprocessor",
             "amp_observation_preprocessor",
-            "noise",
+            "exploration_noise",
             "smooth_regularization_noise",
         ]
-
-        def reward_shaper_function(scale):
-            def reward_shaper(rewards, *args, **kwargs):
-                return rewards * scale
-
-            return None if scale is None or scale == 1.0 else reward_shaper
 
         def update_dict(d):
             for key, value in d.items():
@@ -177,13 +170,21 @@ class Runner:
                             d[key] = eval(value)
                     elif key.endswith("_kwargs"):
                         d[key] = value if value is not None else {}
-                    elif key in ["rewards_shaper_scale"]:
-                        d["rewards_shaper"] = reward_shaper_function(value)
             return d
 
         cfg = update_dict(copy.deepcopy(cfg))
         if "class" in cfg:
             del cfg["class"]
+
+        # materialize exploration scheduler
+        if "exploration_scheduler" in cfg:
+            cfg["exploration_scheduler"] = eval(f"lambda timestep, timesteps: {cfg['exploration_scheduler']}")
+        # materialize rewards shaper
+        if "rewards_shaper_scale" in cfg:
+            scale = cfg["rewards_shaper_scale"]
+            if scale is not None and scale != 1.0:
+                cfg["rewards_shaper"] = lambda rewards, *args, **kwargs: rewards * scale
+            del cfg["rewards_shaper_scale"]
 
         # backward compatibility
         if "lambda" in cfg:
@@ -192,8 +193,6 @@ class Runner:
         if "clip_predicted_values" in cfg:
             cfg["value_clip"] = cfg["value_clip"] if cfg["clip_predicted_values"] else 0.0
             del cfg["clip_predicted_values"]
-        if "rewards_shaper_scale" in cfg:
-            del cfg["rewards_shaper_scale"]
 
         return cfg
 
