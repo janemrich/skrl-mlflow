@@ -17,6 +17,7 @@ class GaussianMixin:
         self,
         *,
         clip_actions: bool = False,
+        clip_mean_actions: bool = False,
         clip_log_std: bool = True,
         min_log_std: float = -20,
         max_log_std: float = 2,
@@ -26,6 +27,8 @@ class GaussianMixin:
         """Gaussian mixin model (stochastic model).
 
         :param clip_actions: Flag to indicate whether the actions should be clipped to the action space.
+        :param clip_mean_actions: Flag to indicate whether the mean actions should be clipped to the action space.
+            If ``True``, the mean actions will be clipped before sampling the actions.
         :param clip_log_std: Flag to indicate whether the log standard deviations should be clipped.
         :param min_log_std: Minimum value of the log standard deviation if ``clip_log_std`` is True.
         :param max_log_std: Maximum value of the log standard deviation if ``clip_log_std`` is True.
@@ -37,6 +40,7 @@ class GaussianMixin:
         :raises ValueError: If the reduction method is not valid.
         """
         self._g_clip_actions = clip_actions
+        self._g_clip_mean_actions = clip_mean_actions
         self._g_clip_actions_min, self._g_clip_actions_max = compute_space_limits(self.action_space, device=self.device)
 
         self._g_clip_log_std = clip_log_std
@@ -68,11 +72,15 @@ class GaussianMixin:
 
             - ``"log_std"``: log of the standard deviation.
             - ``"log_prob"``: log of the probability density function.
-            - ``"mean_actions"``: mean actions (network output).
+            - ``"mean_actions"``: mean actions (network output after optional clipping).
         """
         # map from observations/states to mean actions and log standard deviations
         mean_actions, outputs = self.compute(inputs, role)
         log_std = outputs["log_std"]
+
+        # clip mean actions
+        if self._g_clip_mean_actions:
+            mean_actions = torch.clamp(mean_actions, self._g_clip_actions_min, self._g_clip_actions_max)
 
         # clamp log standard deviations
         if self._g_clip_log_std:

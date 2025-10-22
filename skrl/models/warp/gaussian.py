@@ -32,51 +32,59 @@ def _gaussian(
     log_std_max: float,
     clip_actions_min: wp.array1d(dtype=float),
     clip_actions_max: wp.array1d(dtype=float),
+    clip_mean_actions_min: wp.array1d(dtype=float),
+    clip_mean_actions_max: wp.array1d(dtype=float),
     taken_actions: wp.array2d(dtype=float),
     reduction: int,
     m: float,
     key: int,
     # outputs
+    loc_out: wp.array2d(dtype=float),
     actions: wp.array2d(dtype=float),
     log_prob: wp.array2d(dtype=float),
     scale: wp.array1d(dtype=float),
 ):
     i, j = wp.tid()
     subkey = wp.rand_init(key + i, j)
+    # clamp mean actions
+    loc_ij = loc[i, j]
+    if clip_mean_actions_min:
+        loc_ij = wp.clamp(loc_ij, clip_mean_actions_min[j], clip_mean_actions_max[j])
+    loc_out[i, j] = loc_ij
     # clamp log standard deviations and compute distribution parameters
     scale[j] = wp.exp(wp.clamp(log_std[j], log_std_min, log_std_max))
     # sample actions
     if clip_actions_min:
-        actions[i, j] = wp.clamp(wp.randn(subkey) * scale[j] + loc[i, j], clip_actions_min[j], clip_actions_max[j])
+        actions[i, j] = wp.clamp(wp.randn(subkey) * scale[j] + loc_ij, clip_actions_min[j], clip_actions_max[j])
     else:
-        actions[i, j] = wp.randn(subkey) * scale[j] + loc[i, j]
+        actions[i, j] = wp.randn(subkey) * scale[j] + loc_ij
     # log of the probability density function
     if taken_actions:
         # mean
         if reduction == 0:
-            wp.atomic_add(log_prob[i], 0, _log_prob(taken_actions[i, j], loc[i, j], scale[j]) / m)
+            wp.atomic_add(log_prob[i], 0, _log_prob(taken_actions[i, j], loc_ij, scale[j]) / m)
         # sum
         elif reduction == 1:
-            wp.atomic_add(log_prob[i], 0, _log_prob(taken_actions[i, j], loc[i, j], scale[j]))
+            wp.atomic_add(log_prob[i], 0, _log_prob(taken_actions[i, j], loc_ij, scale[j]))
         # prod
         elif reduction == 2:
             pass  # TODO: implement prod
         # none
         else:
-            log_prob[i, j] = _log_prob(taken_actions[i, j], loc[i, j], scale[j])
+            log_prob[i, j] = _log_prob(taken_actions[i, j], loc_ij, scale[j])
     else:
         # mean
         if reduction == 0:
-            wp.atomic_add(log_prob[i], 0, _log_prob(actions[i, j], loc[i, j], scale[j]) / m)
+            wp.atomic_add(log_prob[i], 0, _log_prob(actions[i, j], loc_ij, scale[j]) / m)
         # sum
         elif reduction == 1:
-            wp.atomic_add(log_prob[i], 0, _log_prob(actions[i, j], loc[i, j], scale[j]))
+            wp.atomic_add(log_prob[i], 0, _log_prob(actions[i, j], loc_ij, scale[j]))
         # prod
         elif reduction == 2:
             pass  # TODO: implement prod
         # none
         else:
-            log_prob[i, j] = _log_prob(actions[i, j], loc[i, j], scale[j])
+            log_prob[i, j] = _log_prob(actions[i, j], loc_ij, scale[j])
 
 
 @wp.kernel
@@ -90,6 +98,7 @@ class GaussianMixin:
         self,
         *,
         clip_actions: bool = False,
+        clip_mean_actions: bool = False,
         clip_log_std: bool = True,
         min_log_std: float = -20,
         max_log_std: float = 2,
@@ -99,6 +108,8 @@ class GaussianMixin:
         """Gaussian mixin model (stochastic model).
 
         :param clip_actions: Flag to indicate whether the actions should be clipped to the action space.
+        :param clip_mean_actions: Flag to indicate whether the mean actions should be clipped to the action space.
+            If ``True``, the mean actions will be clipped before sampling the actions.
         :param clip_log_std: Flag to indicate whether the log standard deviations should be clipped.
         :param min_log_std: Minimum value of the log standard deviation if ``clip_log_std`` is True.
         :param max_log_std: Maximum value of the log standard deviation if ``clip_log_std`` is True.
@@ -110,8 +121,16 @@ class GaussianMixin:
         :raises ValueError: If the reduction method is not valid.
         """
         self._g_clip_actions = clip_actions
-        self._g_clip_actions_min, self._g_clip_actions_max = compute_space_limits(
-            self.action_space if self._g_clip_actions else None, device=self.device, none_if_unbounded="both"
+        self._g_clip_mean_actions = clip_mean_actions
+
+        clip_actions_min, clip_actions_max = compute_space_limits(
+            self.action_space, device=self.device, none_if_unbounded="both"
+        )
+        self._g_clip_actions_min, self._g_clip_actions_max = (
+            (clip_actions_min, clip_actions_max) if self._g_clip_actions else (None, None)
+        )
+        self._g_clip_mean_actions_min, self._g_clip_mean_actions_max = (
+            (clip_actions_min, clip_actions_max) if self._g_clip_mean_actions else (None, None)
         )
 
         self._g_clip_log_std = clip_log_std
@@ -141,7 +160,7 @@ class GaussianMixin:
 
             - ``"log_std"``: log of the standard deviation.
             - ``"log_prob"``: log of the probability density function.
-            - ``"mean_actions"``: mean actions (network output).
+            - ``"mean_actions"``: mean actions (network output after optional clipping).
         """
         # map from observations/states to mean actions and log standard deviations
         mean_actions, outputs = self.compute(inputs, role)
@@ -149,6 +168,7 @@ class GaussianMixin:
 
         self._g_key += 1
         shape = mean_actions.shape
+        mean_actions_clipped = wp.empty(shape=shape, dtype=wp.float32, device=self.device, requires_grad=True)
         actions = wp.empty(shape=shape, dtype=wp.float32, device=self.device, requires_grad=True)
         if self._g_reduction == "none":
             log_prob = wp.zeros(shape=shape, dtype=wp.float32, device=self.device, requires_grad=True)
@@ -166,17 +186,19 @@ class GaussianMixin:
                 self._g_log_std_max,
                 self._g_clip_actions_min,
                 self._g_clip_actions_max,
+                self._g_clip_mean_actions_min,
+                self._g_clip_mean_actions_max,
                 inputs.get("taken_actions"),
                 self._g_reduction,
                 shape[1],
                 self._g_key,
             ],
-            outputs=[actions, log_prob, scale],
+            outputs=[mean_actions_clipped, actions, log_prob, scale],
             device=self.device,
         )
 
         outputs["log_prob"] = log_prob
-        outputs["mean_actions"] = mean_actions
+        outputs["mean_actions"] = mean_actions_clipped
         outputs["stddev"] = scale
         return actions, outputs
 
