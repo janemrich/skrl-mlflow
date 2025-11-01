@@ -200,12 +200,16 @@ class MultiAgent:
             mlflow_kwargs = copy.deepcopy(self.cfg.get("experiment", {}).get("mlflow_kwargs", {}))
             mlflow_kwargs.setdefault("run_name", os.path.split(self.experiment_dir)[-1])
 
+            # set tracking uri
+            if "tracking_uri" in mlflow_kwargs:
+                mlflow.set_tracking_uri(mlflow_kwargs.pop("tracking_uri"))
+
             # start mlflow run
             mlflow.start_run(**mlflow_kwargs)
 
             # log config
-            config = {**self.cfg, **trainer_cfg}
-            mlflow.log_params(config)
+            mlflow_config = {**self.cfg, **trainer_cfg}
+            mlflow.log_params(mlflow_config)
 
         # main entry to log data for consumption and visualization by TensorBoard
         if self.write_interval == "auto":
