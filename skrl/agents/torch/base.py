@@ -178,8 +178,8 @@ class Agent:
             mlflow.start_run(**mlflow_kwargs)
 
             # log config
-            config = {**self.cfg, **trainer_cfg}
-            mlflow.log_params(config)
+            mlflow_config = {**self.cfg, **trainer_cfg}
+            mlflow.log_params(mlflow_config)
 
         # main entry to log data for consumption and visualization by TensorBoard
         if self.write_interval == "auto":

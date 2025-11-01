@@ -107,3 +107,6 @@ sections = [
 ]
 no_lines_before = "THIRDPARTY"
 skip = ["docs"]
+
+[tool.setuptools.packages.find]
+include = ["skrl"]
