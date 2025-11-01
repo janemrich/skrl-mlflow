@@ -145,6 +145,46 @@ Tracking custom metrics/scales
 
     <br><hr>
 
+**MLflow integration**
+----------------------
+
+`MLflow <https://mlflow.org/>`_ is also supported for tracking and visualizing metrics and scalars. Its configuration is responsibility of the agents (**can be customized independently for each agent using its configuration dictionary**).
+
+Follow the steps described in MLflow documentation (`MLflow quickstart <https://mlflow.org/docs/latest/getting-started/quickstart-1/index.html>`_) to install the :literal:`mlflow` library on the current machine.
+
+.. note::
+
+    The :literal:`mlflow` library is not installed by default. Install it in a Python 3 environment using pip as follows:
+
+    .. code-block:: bash
+
+        pip install mlflow
+
+.. raw:: html
+
+    <br>
+
+Configuration
+^^^^^^^^^^^^^
+
+Each agent offers the following parameters under the :literal:`"experiment"` key. Visit the MLflow documentation for more details about the configuration parameters.
+
+.. literalinclude:: ../snippets/data.py
+    :language: python
+    :emphasize-lines: 14-15
+    :start-after: [start-data-configuration]
+    :end-before: [end-data-configuration]
+
+* **mlflow**: whether to enable support for MLflow.
+
+* **mlflow_kwargs**: keyword argument dictionary used to parameterize the `mlflow.start_run <https://mlflow.org/docs/latest/python_api/mlflow.html#mlflow.start_run>`_ function. If no values are provided for the following parameters, the following values will be set for them:
+
+  * :literal:`"run_name"`: will be set to the name of the experiment directory.
+
+.. raw:: html
+
+    <br><hr>
+
 **Weights & Biases integration**
 --------------------------------
 

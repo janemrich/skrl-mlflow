@@ -31,7 +31,9 @@ Q_LEARNING_DEFAULT_CONFIG = {
         "store_separately": False,          # whether to store checkpoints separately
 
         "wandb": False,             # whether to use Weights & Biases
-        "wandb_kwargs": {}          # wandb kwargs (see https://docs.wandb.ai/ref/python/init)
+        "wandb_kwargs": {},         # wandb kwargs (see https://docs.wandb.ai/ref/python/init)
+        "mlflow": False,            # whether to use MLflow
+        "mlflow_kwargs": {}         # mlflow kwargs (see https://mlflow.org/docs/latest/python_api/mlflow.html#mlflow.start_run)
     }
 }
 # [end-config-dict-torch]

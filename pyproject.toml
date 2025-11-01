@@ -26,6 +26,7 @@ dependencies = [
   "packaging",
   "tensorboard",
   "tqdm",
+  "mlflow",
 ]
 [project.optional-dependencies]
 torch = [

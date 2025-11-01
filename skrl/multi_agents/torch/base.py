@@ -187,6 +187,21 @@ class MultiAgent:
 
             wandb.init(**wandb_kwargs)
 
+        # setup MLflow
+        if self.cfg.get("experiment", {}).get("mlflow", False):
+            import mlflow
+
+            # get mlflow kwargs
+            mlflow_kwargs = copy.deepcopy(self.cfg.get("experiment", {}).get("mlflow_kwargs", {}))
+            mlflow_kwargs.setdefault("run_name", os.path.split(self.experiment_dir)[-1])
+
+            # start mlflow run
+            mlflow.start_run(**mlflow_kwargs)
+
+            # log config
+            config = {**self.cfg, **trainer_cfg}
+            mlflow.log_params(config)
+
         # main entry to log data for consumption and visualization by TensorBoard
         if self.write_interval == "auto":
             self.write_interval = int(trainer_cfg.get("timesteps", 0) / 100)
@@ -508,6 +523,13 @@ class MultiAgent:
         # write to tensorboard
         if timestep > 1 and self.write_interval > 0 and not timestep % self.write_interval:
             self.write_tracking_data(timestep, timesteps)
+
+            # write to mlflow
+            if self.cfg.get("experiment", {}).get("mlflow", False):
+                import mlflow
+                for k, v in self.tracking_data.items():
+                    if len(v) > 0:
+                        mlflow.log_metric(k, np.mean(v), step=timestep)
 
     def _update(self, timestep: int, timesteps: int) -> None:
         """Algorithm's main update step
