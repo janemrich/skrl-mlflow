@@ -199,6 +199,10 @@ class MultiAgent:
             if "tracking_uri" in mlflow_kwargs:
                 mlflow.set_tracking_uri(mlflow_kwargs.pop("tracking_uri"))
 
+            # set experiment name
+            if "experiment_name" in mlflow_kwargs:
+                mlflow.set_experiment(mlflow_kwargs.pop("experiment_name"))
+
             # start mlflow run
             mlflow.start_run(**mlflow_kwargs)
 
