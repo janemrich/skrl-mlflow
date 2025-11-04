@@ -264,12 +264,20 @@ class Agent:
         :type timesteps: int
         """
         for k, v in self.tracking_data.items():
-            if k.endswith("(min)"):
+            if k.endswith(" min"):
                 self.writer.add_scalar(k, np.min(v), timestep)
-            elif k.endswith("(max)"):
+            elif k.endswith(" max"):
                 self.writer.add_scalar(k, np.max(v), timestep)
             else:
                 self.writer.add_scalar(k, np.mean(v), timestep)
+
+        # write to mlflow
+        if self.cfg.get("experiment", {}).get("mlflow", False):
+            import mlflow
+            for k, v in self.tracking_data.items():
+                if len(v) > 0:
+                    mlflow.log_metric(k, np.mean(v), step=timestep)
+                    
         # reset data containers for next iteration
         self._track_rewards.clear()
         self._track_timesteps.clear()
@@ -400,21 +408,36 @@ class Agent:
                 self._cumulative_timesteps[finished_episodes] = 0
 
             # record data
-            self.tracking_data["Reward / Instantaneous reward (max)"].append(np.max(rewards).item())
-            self.tracking_data["Reward / Instantaneous reward (min)"].append(np.min(rewards).item())
-            self.tracking_data["Reward / Instantaneous reward (mean)"].append(np.mean(rewards).item())
+            self.tracking_data["Reward / Instantaneous reward max"].append(np.max(rewards).item())
+            self.tracking_data["Reward / Instantaneous reward min"].append(np.min(rewards).item())
+            self.tracking_data["Reward / Instantaneous reward mean"].append(np.mean(rewards).item())
 
             if len(self._track_rewards):
                 track_rewards = np.array(self._track_rewards)
                 track_timesteps = np.array(self._track_timesteps)
 
-                self.tracking_data["Reward / Total reward (max)"].append(np.max(track_rewards))
-                self.tracking_data["Reward / Total reward (min)"].append(np.min(track_rewards))
-                self.tracking_data["Reward / Total reward (mean)"].append(np.mean(track_rewards))
+                self.tracking_data["Reward / Total reward max"].append(np.max(track_rewards))
+                self.tracking_data["Reward / Total reward min"].append(np.min(track_rewards))
+                self.tracking_data["Reward / Total reward mean"].append(np.mean(track_rewards))
 
-                self.tracking_data["Episode / Total timesteps (max)"].append(np.max(track_timesteps))
-                self.tracking_data["Episode / Total timesteps (min)"].append(np.min(track_timesteps))
-                self.tracking_data["Episode / Total timesteps (mean)"].append(np.mean(track_timesteps))
+                self.tracking_data["Episode / Total timesteps max"].append(np.max(track_timesteps))
+                self.tracking_data["Episode / Total timesteps min"].append(np.min(track_timesteps))
+                self.tracking_data["Episode / Total timesteps mean"].append(np.mean(track_timesteps))
+            # record data from infos
+            if isinstance(infos, dict):
+                for k, v in infos.items():
+                    if isinstance(v, torch.Tensor):
+                        v = v.cpu().numpy()
+                    if isinstance(v, np.ndarray):
+                        try:
+                            self.tracking_data[f"Info / {k} mean"].append(np.mean(v))
+                            self.tracking_data[f"Info / {k} min"].append(np.min(v))
+                            self.tracking_data[f"Info / {k} max"].append(np.max(v))
+                        except (TypeError, ValueError):
+                            pass
+                    elif isinstance(v, (int, float)):
+                        self.tracking_data[f"Info / {k}"].append(v)
+
 
     def set_mode(self, mode: str) -> None:
         """Set the model mode (training or evaluation)
@@ -508,7 +531,7 @@ class Agent:
         # update best models and write checkpoints
         if timestep > 1 and self.checkpoint_interval > 0 and not timestep % self.checkpoint_interval:
             # update best models
-            reward = np.mean(self.tracking_data.get("Reward / Total reward (mean)", -(2**31)))
+            reward = np.mean(self.tracking_data.get("Reward / Total reward mean", -(2**31)))
             if reward > self.checkpoint_best_modules["reward"]:
                 self.checkpoint_best_modules["timestep"] = timestep
                 self.checkpoint_best_modules["reward"] = reward
@@ -523,13 +546,6 @@ class Agent:
         # write to tensorboard
         if timestep > 1 and self.write_interval > 0 and not timestep % self.write_interval:
             self.write_tracking_data(timestep, timesteps)
-
-            # write to mlflow
-            if self.cfg.get("experiment", {}).get("mlflow", False):
-                import mlflow
-                for k, v in self.tracking_data.items():
-                    if len(v) > 0:
-                        mlflow.log_metric(k, np.mean(v), step=timestep)
 
     def _update(self, timestep: int, timesteps: int) -> None:
         """Algorithm's main update step

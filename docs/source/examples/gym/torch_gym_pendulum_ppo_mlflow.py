@@ -85,17 +85,17 @@ models["value"] = Value(env.observation_space, env.action_space, device)
 cfg = PPO_DEFAULT_CONFIG.copy()
 cfg["rollouts"] = 1024  # memory_size
 cfg["learning_epochs"] = 10
-cfg["mini_batches"] = 32
+cfg["mini_batches"] = 16
 cfg["discount_factor"] = 0.9
 cfg["lambda"] = 0.95
-cfg["learning_rate"] = 1e-3
+cfg["learning_rate"] = 1e-4
 cfg["learning_rate_scheduler"] = KLAdaptiveRL
 cfg["learning_rate_scheduler_kwargs"] = {"kl_threshold": 0.008}
 cfg["grad_norm_clip"] = 0.5
 cfg["ratio_clip"] = 0.2
 cfg["value_clip"] = 0.2
 cfg["clip_predicted_values"] = False
-cfg["entropy_loss_scale"] = 0.0
+cfg["entropy_loss_scale"] = 0.0001
 cfg["value_loss_scale"] = 0.5
 cfg["kl_threshold"] = 0
 cfg["state_preprocessor"] = RunningStandardScaler
@@ -116,8 +116,13 @@ agent = PPO(models=models,
 
 
 # configure and instantiate the RL trainer
-cfg_trainer = {"timesteps": 1000, "headless": True}
+cfg_trainer = {"timesteps": 10000, "headless": True}
 trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=[agent])
 
 # start training
 trainer.train()
+
+# end MLflow run
+if agent.cfg["experiment"]["mlflow"]:
+    import mlflow
+    mlflow.end_run()
