@@ -44,12 +44,14 @@ all = [
   "jaxlib>=0.4.31",
   "flax>=0.9.0",
   "optax",
+  "python-dotenv",
 ]
 tests = [
   "pytest",
   "pytest-html",
   "pytest-cov",
   "hypothesis",
+  "python-dotenv",
 ]
 # urls
 [project.urls]
