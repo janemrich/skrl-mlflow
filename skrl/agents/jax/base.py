@@ -73,6 +73,9 @@ class Agent:
         self._cumulative_rewards = None
         self._cumulative_timesteps = None
 
+        self._video_folder = None
+        self._logged_videos = set()
+
         self.training = True
 
         # checkpoint
@@ -243,6 +246,13 @@ class Agent:
         if self.checkpoint_interval > 0:
             os.makedirs(os.path.join(self.experiment_dir, "checkpoints"), exist_ok=True)
 
+        # get video folder from the environment
+        if self.cfg.get("experiment", {}).get("mlflow", False):
+            try:
+                self._video_folder = self.cfg["experiment"]["video_kwargs"]["video_folder"]
+            except Exception:
+                pass
+
     def track_data(self, tag: str, value: float) -> None:
         """Track data to TensorBoard
 
@@ -298,33 +308,49 @@ class Agent:
         # separated modules
         if self.checkpoint_store_separately:
             for name, module in self.checkpoint_modules.items():
-                with open(os.path.join(self.experiment_dir, "checkpoints", f"{name}_{tag}.pickle"), "wb") as file:
+                path = os.path.join(self.experiment_dir, "checkpoints", f"{name}_{tag}.pickle")
+                with open(path, "wb") as file:
                     pickle.dump(flax.serialization.to_bytes(self._get_internal_value(module)), file, protocol=4)
+                if self.cfg.get("experiment", {}).get("mlflow", False):
+                    import mlflow
+                    mlflow.log_artifact(path, "checkpoints")
         # whole agent
         else:
             modules = {}
             for name, module in self.checkpoint_modules.items():
                 modules[name] = flax.serialization.to_bytes(self._get_internal_value(module))
 
-            with open(os.path.join(self.experiment_dir, "checkpoints", f"agent_{tag}.pickle"), "wb") as file:
+            path = os.path.join(self.experiment_dir, "checkpoints", f"agent_{tag}.pickle")
+            with open(path, "wb") as file:
                 pickle.dump(modules, file, protocol=4)
+            if self.cfg.get("experiment", {}).get("mlflow", False):
+                import mlflow
+                mlflow.log_artifact(path, "checkpoints")
 
         # best modules
         if self.checkpoint_best_modules["modules"] and not self.checkpoint_best_modules["saved"]:
             # separated modules
             if self.checkpoint_store_separately:
                 for name, module in self.checkpoint_modules.items():
-                    with open(os.path.join(self.experiment_dir, "checkpoints", f"best_{name}.pickle"), "wb") as file:
+                    path = os.path.join(self.experiment_dir, "checkpoints", f"best_{name}.pickle")
+                    with open(path, "wb") as file:
                         pickle.dump(
                             flax.serialization.to_bytes(self.checkpoint_best_modules["modules"][name]), file, protocol=4
                         )
+                    if self.cfg.get("experiment", {}).get("mlflow", False):
+                        import mlflow
+                        mlflow.log_artifact(path, "checkpoints")
             # whole agent
             else:
                 modules = {}
                 for name, module in self.checkpoint_modules.items():
                     modules[name] = flax.serialization.to_bytes(self.checkpoint_best_modules["modules"][name])
-                with open(os.path.join(self.experiment_dir, "checkpoints", "best_agent.pickle"), "wb") as file:
+                path = os.path.join(self.experiment_dir, "checkpoints", "best_agent.pickle")
+                with open(path, "wb") as file:
                     pickle.dump(modules, file, protocol=4)
+                if self.cfg.get("experiment", {}).get("mlflow", False):
+                    import mlflow
+                    mlflow.log_artifact(path, "checkpoints")
             self.checkpoint_best_modules["saved"] = True
 
     def act(self, states: Union[np.ndarray, jax.Array], timestep: int, timesteps: int) -> Union[np.ndarray, jax.Array]:
@@ -546,6 +572,17 @@ class Agent:
         # write to tensorboard
         if timestep > 1 and self.write_interval > 0 and not timestep % self.write_interval:
             self.write_tracking_data(timestep, timesteps)
+
+            if self.cfg.get("experiment", {}).get("mlflow", False):
+                if self._video_folder is not None:
+                    import mlflow
+                    for filename in os.listdir(self._video_folder):
+                        if filename.endswith(".mp4") and filename not in self._logged_videos:
+                            try:
+                                mlflow.log_artifact(os.path.join(self._video_folder, filename), "videos")
+                                self._logged_videos.add(filename)
+                            except Exception as e:
+                                logger.warning(f"Failed to log video to MLflow: {e}")
 
     def _update(self, timestep: int, timesteps: int) -> None:
         """Algorithm's main update step

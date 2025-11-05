@@ -1,6 +1,7 @@
 import gymnasium as gym
 import os
 from dotenv import load_dotenv
+import time
 
 import torch
 import torch.nn as nn
@@ -58,11 +59,24 @@ class Value(DeterministicMixin, Model):
 # load and wrap the gym environment.
 # note: the environment version may change depending on the gym version
 try:
-    env = gym.make_vec("Pendulum-v1", num_envs=4)
+    env = gym.make_vec("Pendulum-v1", num_envs=4, render_mode="rgb_array")
 except gym.error.DeprecatedEnv as e:
     env_id = [spec.id for spec in gym.envs.registry.all() if spec.id.startswith("Pendulum-v")][0]
     print("Pendulum-v1 not found. Trying {}".format(env_id))
-    env = gym.make_vec(env_id, num_envs=4)
+    env = gym.make_vec(env_id, num_envs=4, render_mode="rgb_array")
+
+log_dir = "logs/test-skrl-mlflow-" + str(time.time())
+
+# wrap the environment to record videos
+# https://gymnasium.farama.org/api/wrappers/vector_wrappers/#gymnasium.wrappers.vector.RecordVideo
+video_kwargs = {
+    "video_folder": os.path.join(log_dir, "videos"),
+    "name_prefix": "ppo-pendulum",
+    "step_trigger": lambda step: step % 1000 == 0,
+    "video_length":200
+    }
+env = gym.wrappers.vector.RecordVideo(env, **video_kwargs)
+
 env = wrap_env(env)
 
 device = env.device
@@ -103,8 +117,10 @@ cfg["state_preprocessor_kwargs"] = {"size": env.observation_space, "device": dev
 cfg["value_preprocessor"] = RunningStandardScaler
 cfg["value_preprocessor_kwargs"] = {"size": 1, "device": device}
 # logging to MLflow
+cfg["experiment"]["directory"] = os.path.abspath(log_dir)
 cfg["experiment"]["mlflow"] = True
 cfg["experiment"]["mlflow_kwargs"] = {"experiment_name": "test-skrl-mlflow"}
+cfg["experiment"]["video_kwargs"] = video_kwargs
 
 
 agent = PPO(models=models,
