@@ -265,32 +265,42 @@ class Agent:
         # separated modules
         if self.checkpoint_store_separately:
             for name, module in self.checkpoint_modules.items():
-                torch.save(
-                    self._get_internal_value(module),
-                    os.path.join(self.experiment_dir, "checkpoints", f"{name}_{tag}.pt"),
-                )
+                path = os.path.join(self.experiment_dir, "checkpoints", f"{name}_{tag}.pt")
+                torch.save(self._get_internal_value(module), path)
+                if self.cfg.get("experiment", {}).get("mlflow", False):
+                    import mlflow
+                    mlflow.log_artifact(path, "checkpoints")
         # whole agent
         else:
             modules = {}
             for name, module in self.checkpoint_modules.items():
                 modules[name] = self._get_internal_value(module)
-            torch.save(modules, os.path.join(self.experiment_dir, "checkpoints", f"agent_{tag}.pt"))
+            path = os.path.join(self.experiment_dir, "checkpoints", f"agent_{tag}.pt")
+            torch.save(modules, path)
+            if self.cfg.get("experiment", {}).get("mlflow", False):
+                import mlflow
+                mlflow.log_artifact(path, "checkpoints")
 
         # best modules
         if self.checkpoint_best_modules["modules"] and not self.checkpoint_best_modules["saved"]:
             # separated modules
             if self.checkpoint_store_separately:
                 for name, module in self.checkpoint_modules.items():
-                    torch.save(
-                        self.checkpoint_best_modules["modules"][name],
-                        os.path.join(self.experiment_dir, "checkpoints", f"best_{name}.pt"),
-                    )
+                    path = os.path.join(self.experiment_dir, "checkpoints", f"best_{name}.pt")
+                    torch.save(self.checkpoint_best_modules["modules"][name], path)
+                    if self.cfg.get("experiment", {}).get("mlflow", False):
+                        import mlflow
+                        mlflow.log_artifact(path, "checkpoints")
             # whole agent
             else:
                 modules = {}
                 for name, module in self.checkpoint_modules.items():
                     modules[name] = self.checkpoint_best_modules["modules"][name]
-                torch.save(modules, os.path.join(self.experiment_dir, "checkpoints", "best_agent.pt"))
+                path = os.path.join(self.experiment_dir, "checkpoints", "best_agent.pt")
+                torch.save(modules, path)
+                if self.cfg.get("experiment", {}).get("mlflow", False):
+                    import mlflow
+                    mlflow.log_artifact(path, "checkpoints")
             self.checkpoint_best_modules["saved"] = True
 
     def act(self, states: torch.Tensor, timestep: int, timesteps: int) -> torch.Tensor:
