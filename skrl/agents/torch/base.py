@@ -71,6 +71,9 @@ class Agent:
         self._cumulative_rewards = None
         self._cumulative_timesteps = None
 
+        self._video_folder = None
+        self._logged_videos = set()
+
         self.training = True
 
         # checkpoint
@@ -199,6 +202,13 @@ class Agent:
             self.checkpoint_interval = int(trainer_cfg.get("timesteps", 0) / 10)
         if self.checkpoint_interval > 0:
             os.makedirs(os.path.join(self.experiment_dir, "checkpoints"), exist_ok=True)
+
+        # get video folder from the environment
+        if self.cfg.get("experiment", {}).get("mlflow", False):
+            try:
+                self._video_folder = self.cfg["experiment"]["video_kwargs"]["video_folder"]
+            except Exception:
+                pass
 
     def track_data(self, tag: str, value: float) -> None:
         """Track data to TensorBoard
@@ -725,6 +735,17 @@ class Agent:
         # write to tensorboard
         if timestep > 1 and self.write_interval > 0 and not timestep % self.write_interval:
             self.write_tracking_data(timestep, timesteps)
+
+            if self.cfg.get("experiment", {}).get("mlflow", False):
+                if self._video_folder is not None:
+                    import mlflow
+                    for filename in os.listdir(self._video_folder):
+                        if filename.endswith(".mp4") and filename not in self._logged_videos:
+                            try:
+                                mlflow.log_artifact(os.path.join(self._video_folder, filename), "videos")
+                                self._logged_videos.add(filename)
+                            except Exception as e:
+                                logger.warning(f"Failed to log video to MLflow: {e}")
 
     def _update(self, timestep: int, timesteps: int) -> None:
         """Algorithm's main update step
