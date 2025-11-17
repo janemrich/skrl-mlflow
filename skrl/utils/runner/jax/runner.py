@@ -1,6 +1,9 @@
 from typing import Any, Mapping, Type, Union
 
 import copy
+import mlflow
+import signal
+import sys
 
 from skrl import logger
 from skrl.agents.jax import Agent
@@ -399,9 +402,33 @@ class Runner:
 
         :raises ValueError: The specified running mode is not valid
         """
-        if mode == "train":
-            self._trainer.train()
-        elif mode == "eval":
-            self._trainer.eval()
-        else:
-            raise ValueError(f"Unknown running mode: {mode}")
+        run_status = "FINISHED"
+
+        # Set up a signal handler for Ctrl-C
+        def signal_handler(sig, frame):
+            nonlocal run_status
+            print("\n[INFO] Training interrupted by user.")
+            run_status = "KILLED"
+            sys.exit(0)
+
+        signal.signal(signal.SIGINT, signal_handler)
+
+        try:
+            if mode == "train":
+                self._trainer.train()
+            elif mode == "eval":
+                self._trainer.eval()
+            else:
+                raise ValueError(f"Unknown running mode: {mode}")
+        except SystemExit:
+            print("[INFO] SystemExit caught, training interrupted.")
+        except Exception as e:
+            print(f"[ERROR] Training failed with exception: {e}")
+            run_status = "FAILED"
+            raise
+        finally:
+            # restore default signal handler
+            signal.signal(signal.SIGINT, signal.SIG_DFL)
+            if mlflow.active_run():
+                print(f"[INFO] Ending mlflow run with status: {run_status}")
+                mlflow.end_run(status=run_status)
