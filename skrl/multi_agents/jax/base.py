@@ -12,6 +12,7 @@ import jax
 import numpy as np
 
 from skrl import config, logger
+from skrl.utils import start_mlflow_run
 from skrl.memories.jax import Memory
 from skrl.models.jax import Model
 
@@ -209,7 +210,7 @@ class MultiAgent:
                 mlflow.set_experiment(mlflow_kwargs.pop("experiment_name"))
 
             # start mlflow run
-            mlflow.start_run(**mlflow_kwargs)
+            start_mlflow_run(**mlflow_kwargs)
 
             # log config
             mlflow_config = {**self.cfg, **trainer_cfg}

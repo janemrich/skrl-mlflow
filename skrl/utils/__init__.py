@@ -8,6 +8,7 @@ import time
 import numpy as np
 
 from skrl import config, logger
+from .mlflow import start_mlflow_run
 
 
 def set_seed(seed: Optional[int] = None, deterministic: bool = False) -> int:
