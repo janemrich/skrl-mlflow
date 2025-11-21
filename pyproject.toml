@@ -22,7 +22,7 @@ classifiers = [
 ]
 # dependencies / optional-dependencies
 dependencies = [
-  "gymnasium",
+  "gymnasium[other]",
   "packaging",
   "tensorboard",
   "tqdm",

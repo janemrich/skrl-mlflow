@@ -6,6 +6,7 @@ import copy
 import datetime
 import os
 import gymnasium
+from mlflow import MlflowClient
 from packaging import version
 
 import numpy as np
@@ -444,41 +445,47 @@ class Agent:
         torch.save(modules, path)
 
     
+        
     def download_mlflow_with_params(self, artifact_file_uri: str) -> tuple[str, str]:
         """
-        Input example:
-            mlflow-artifacts:/.../artifacts/checkpoints/agent_108000.pt
+        Input:
+            mlflow-artifacts:/<exp_id>/<run_id>/artifacts/checkpoints/agent_108000.pt
 
         Output:
             (local_checkpoint_path, local_params_path)
+
+        Local folder structure:
+            mlflow-downloads/<run_id>/checkpoints/...
+            mlflow-downloads/<run_id>/params/params.yaml
         """
 
-        # Find the base URI ending right at ".../artifacts"
-        idx = artifact_file_uri.index("/artifacts/")
-        base_uri = artifact_file_uri[:idx + len("/artifacts")]
+        client = MlflowClient()
 
-        # Everything after ".../artifacts/"
-        tail = artifact_file_uri[idx + len("/artifacts/"):]  
-        # Example of tail: "checkpoints/agent_108000.pt"
+        # Example:
+        # artifact_file_uri =
+        #   "mlflow-artifacts:/63/5ba2f4...fe1/artifacts/checkpoints/agent_108000.pt"
+
+        # Strip the "mlflow-artifacts:/" prefix
+        no_prefix = artifact_file_uri.replace("mlflow-artifacts:/", "")
+        # Now: "63/5ba2f4...fe1/artifacts/checkpoints/agent_108000.pt"
+
+        segments = no_prefix.split("/")
+        # segments[0] = experiment_id (e.g. "63")
+        # segments[1] = run_id (e.g. "5ba2f4...fe1")
+        run_id = segments[1]
+
+        # Find part after ".../artifacts/"
+        idx = artifact_file_uri.index("/artifacts/")
+        tail = artifact_file_uri[idx + len("/artifacts/"):]
+        # tail example: "checkpoints/agent_108000.pt"
 
         parts = tail.split("/")
-        subfolder = parts[0]      # e.g. "checkpoints"
-        filename = parts[-1]      # e.g. "agent_108000.pt"
+        subfolder = parts[0]      # "checkpoints"
+        filename = parts[-1]      # "agent_108000.pt"
 
-        # ---------------------------------------------------------
-        # Extract MLflow run ID
-        # Format is: mlflow-artifacts:/<experiment_id>/<run_id>/artifacts/...
-        # After removing prefix we get: "<experiment>/<run>/artifacts/..."
-        # run_id is always the second element.
-        # ---------------------------------------------------------
-        no_prefix = artifact_file_uri.replace("mlflow-artifacts:/", "")
-        run_id = no_prefix.split("/")[1]
-
-        # ---------------------------------------------------------
-        # Local folder structure:
-        # mlflow-downloads/<run_id>/checkpoints/
-        # mlflow-downloads/<run_id>/params/
-        # ---------------------------------------------------------
+        # Build local directory structure:
+        # mlflow-downloads/<run_id>/checkpoints
+        # mlflow-downloads/<run_id>/params
         run_dir = os.path.join("mlflow-downloads", run_id)
         checkpoints_dir = os.path.join(run_dir, "checkpoints")
         params_dir = os.path.join(run_dir, "params")
@@ -486,24 +493,21 @@ class Agent:
         os.makedirs(checkpoints_dir, exist_ok=True)
         os.makedirs(params_dir, exist_ok=True)
 
-        # ---------------------------------------------------------
-        # Download checkpoint
-        # ---------------------------------------------------------
-        checkpoint_uri = f"{base_uri}/{subfolder}/{filename}"
+        # Paths inside MLflow artifacts (relative to the run's artifact root)
+        artifact_checkpoint_path = f"{subfolder}/{filename}"      # "checkpoints/agent_108000.pt"
+        artifact_params_path = "params/params.yaml"
 
-        local_ckpt = mlflow.artifacts.download_artifacts(
-            artifact_uri=checkpoint_uri,
+        # Download checkpoint
+        local_ckpt = client.download_artifacts(
+            run_id=run_id,
+            path=artifact_checkpoint_path,
             dst_path=checkpoints_dir
         )
 
-        # ---------------------------------------------------------
         # Download params.yaml
-        # (always assumed to be inside MLflow "params/" folder)
-        # ---------------------------------------------------------
-        params_uri = f"{base_uri}/params/params.yaml"
-
-        local_params = mlflow.artifacts.download_artifacts(
-            artifact_uri=params_uri,
+        local_params = client.download_artifacts(
+            run_id=run_id,
+            path=artifact_params_path,
             dst_path=params_dir
         )
 
