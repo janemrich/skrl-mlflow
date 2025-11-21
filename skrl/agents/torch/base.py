@@ -444,7 +444,7 @@ class Agent:
         torch.save(modules, path)
 
     
-    def download_mlflow_with_params(artifact_file_uri: str) -> tuple[str, str]:
+    def download_mlflow_with_params(self, artifact_file_uri: str) -> tuple[str, str]:
         """
         Input example:
             mlflow-artifacts:/.../artifacts/checkpoints/agent_108000.pt
