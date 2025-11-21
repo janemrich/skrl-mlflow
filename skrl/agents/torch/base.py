@@ -510,17 +510,50 @@ class Agent:
         return local_ckpt, local_params
 
     def load(self, path: str) -> None:
-        """Load the model from the specified path
-
-        The final storage device is determined by the constructor of the model
-
-        :param path: Path to load the model from
-        :type path: str
         """
+        Load the model from either:
+        - a normal local file path
+        - an MLflow artifact URI (auto-detected)
+
+        Supported MLflow formats:
+            mlflow-artifacts:/...
+            runs:/<run_id>/path/to/file
+        """
+
+        # ---------------------------------------------
+        # 1. Detect MLflow artifact URIs
+        # ---------------------------------------------
+        is_mlflow_artifact = (
+            isinstance(path, str)
+            and (
+                path.startswith("mlflow-artifacts:")
+                or path.startswith("runs:/")
+            )
+        )
+
+        # ---------------------------------------------
+        # 2. If MLflow path: download checkpoint + params
+        # ---------------------------------------------
+        if is_mlflow_artifact:
+            # Import here to avoid circular imports
+
+            local_ckpt, local_params = self.download_mlflow_with_params(path)
+
+            # Replace "path" with real local path to .pt
+            path = local_ckpt
+
+        # ---------------------------------------------
+        # 3. Now `path` MUST be a local .pt file.
+        #    Load as usual.
+        # ---------------------------------------------
         if version.parse(torch.__version__) >= version.parse("1.13"):
-            modules = torch.load(path, map_location=self.device, weights_only=False)  # prevent torch:FutureWarning
+            modules = torch.load(path, map_location=self.device, weights_only=False)
         else:
             modules = torch.load(path, map_location=self.device)
+
+        # ---------------------------------------------
+        # 4. Same logic as original Agent.load()
+        # ---------------------------------------------
         if type(modules) is dict:
             for name, data in modules.items():
                 module = self.checkpoint_modules.get(name, None)
@@ -532,7 +565,9 @@ class Agent:
                     else:
                         raise NotImplementedError
                 else:
-                    logger.warning(f"Cannot load the {name} module. The agent doesn't have such an instance")
+                    logger.warning(
+                        f"Cannot load the {name} module. The agent doesn't have such an instance"
+                    )
 
     def migrate(
         self,
