@@ -1,3 +1,4 @@
+import tempfile
 from typing import Any, Mapping, Optional, Tuple, Union
 
 import collections
@@ -12,7 +13,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 
 from skrl import config, logger
-from skrl.utils import start_mlflow_run
+from skrl.utils import mlflow, start_mlflow_run
 from skrl.memories.torch import Memory
 from skrl.models.torch import Model
 
@@ -441,6 +442,72 @@ class Agent:
         for name, module in self.checkpoint_modules.items():
             modules[name] = self._get_internal_value(module)
         torch.save(modules, path)
+
+    
+    def download_mlflow_with_params(artifact_file_uri: str) -> tuple[str, str]:
+        """
+        Input example:
+            mlflow-artifacts:/.../artifacts/checkpoints/agent_108000.pt
+
+        Output:
+            (local_checkpoint_path, local_params_path)
+        """
+
+        # Find the base URI ending right at ".../artifacts"
+        idx = artifact_file_uri.index("/artifacts/")
+        base_uri = artifact_file_uri[:idx + len("/artifacts")]
+
+        # Everything after ".../artifacts/"
+        tail = artifact_file_uri[idx + len("/artifacts/"):]  
+        # Example of tail: "checkpoints/agent_108000.pt"
+
+        parts = tail.split("/")
+        subfolder = parts[0]      # e.g. "checkpoints"
+        filename = parts[-1]      # e.g. "agent_108000.pt"
+
+        # ---------------------------------------------------------
+        # Extract MLflow run ID
+        # Format is: mlflow-artifacts:/<experiment_id>/<run_id>/artifacts/...
+        # After removing prefix we get: "<experiment>/<run>/artifacts/..."
+        # run_id is always the second element.
+        # ---------------------------------------------------------
+        no_prefix = artifact_file_uri.replace("mlflow-artifacts:/", "")
+        run_id = no_prefix.split("/")[1]
+
+        # ---------------------------------------------------------
+        # Local folder structure:
+        # mlflow-downloads/<run_id>/checkpoints/
+        # mlflow-downloads/<run_id>/params/
+        # ---------------------------------------------------------
+        run_dir = os.path.join("mlflow-downloads", run_id)
+        checkpoints_dir = os.path.join(run_dir, "checkpoints")
+        params_dir = os.path.join(run_dir, "params")
+
+        os.makedirs(checkpoints_dir, exist_ok=True)
+        os.makedirs(params_dir, exist_ok=True)
+
+        # ---------------------------------------------------------
+        # Download checkpoint
+        # ---------------------------------------------------------
+        checkpoint_uri = f"{base_uri}/{subfolder}/{filename}"
+
+        local_ckpt = mlflow.artifacts.download_artifacts(
+            artifact_uri=checkpoint_uri,
+            dst_path=checkpoints_dir
+        )
+
+        # ---------------------------------------------------------
+        # Download params.yaml
+        # (always assumed to be inside MLflow "params/" folder)
+        # ---------------------------------------------------------
+        params_uri = f"{base_uri}/params/params.yaml"
+
+        local_params = mlflow.artifacts.download_artifacts(
+            artifact_uri=params_uri,
+            dst_path=params_dir
+        )
+
+        return local_ckpt, local_params
 
     def load(self, path: str) -> None:
         """Load the model from the specified path
