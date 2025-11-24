@@ -6,7 +6,7 @@ import copy
 import datetime
 import os
 import gymnasium
-from mlflow import MlflowClient
+from mlflow import MlflowClient, MlflowException
 from packaging import version
 
 import numpy as np
@@ -487,29 +487,37 @@ class Agent:
         # mlflow-downloads/<run_id>/checkpoints
         # mlflow-downloads/<run_id>/params
         run_dir = os.path.join("mlflow-downloads", run_id)
-        checkpoints_dir = os.path.join(run_dir, "checkpoints")
-        params_dir = os.path.join(run_dir, "params")
+        checkpoints_dir = os.path.join(run_dir, "artifacts/checkpoints")
+        params_dir = os.path.join(run_dir, "artifacts/params")
+
 
         os.makedirs(checkpoints_dir, exist_ok=True)
         os.makedirs(params_dir, exist_ok=True)
 
         # Paths inside MLflow artifacts (relative to the run's artifact root)
         artifact_checkpoint_path = f"{subfolder}/{filename}"      # "checkpoints/agent_108000.pt"
-        artifact_params_path = "params/params.yaml"
+        artifact_params_path = "params/agent.yaml"
 
+        print(1, checkpoints_dir, artifact_checkpoint_path)
         # Download checkpoint
         local_ckpt = client.download_artifacts(
             run_id=run_id,
             path=artifact_checkpoint_path,
             dst_path=checkpoints_dir
         )
+        print(2, params_dir,artifact_params_path)
 
         # Download params.yaml
-        local_params = client.download_artifacts(
+        try:
+            local_params = client.download_artifacts(
             run_id=run_id,
-            path=artifact_params_path,
+            path="params/agent.yaml",
             dst_path=params_dir
         )
+
+        except MlflowException as e:
+            print(f"⚠️ Failed to download params.yaml: {e}")
+            local_params = None
 
         return local_ckpt, local_params
 

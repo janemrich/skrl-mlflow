@@ -1,3 +1,4 @@
+import argparse
 import gymnasium as gym
 import os
 from dotenv import load_dotenv
@@ -5,6 +6,9 @@ import time
 
 import torch
 import torch.nn as nn
+
+from packaging import version
+import yaml
 
 # import the skrl components to build the RL system
 from skrl.agents.torch.ppo import PPO, PPO_DEFAULT_CONFIG
@@ -14,31 +18,74 @@ from skrl.models.torch import DeterministicMixin, GaussianMixin, Model
 from skrl.resources.preprocessors.torch import RunningStandardScaler
 from skrl.resources.schedulers.torch import KLAdaptiveRL
 from skrl.trainers.torch import SequentialTrainer
-from skrl.utils import set_seed
+from skrl.utils import mlflow, set_seed
 
-# load .env variables
+
+import os, re, yaml
+from mlflow import MlflowClient
+
+def upload_agent_yaml_to_existing_run(load_uri: str, params_config: dict, yaml_name="agent.yaml"):
+    """
+    Добавляет agent.yaml в тот же MLflow run, откуда взят checkpoint.
+    Пример:
+        mlflow-artifacts:/50/90a2668961164475a08682ed44533ac5/artifacts/checkpoints/agent_9000.pt
+    """
+    if not load_uri.startswith("mlflow-artifacts:/"):
+        print("❌ Не MLflow путь, пропускаю загрузку параметров.")
+        return
+
+    # достаём run_id из URI
+    match = re.search(r"mlflow-artifacts:/\d+/([0-9a-f]+?)/artifacts", load_uri)
+    if not match:
+        print(f"❌ Не удалось извлечь run_id из {load_uri}")
+        return
+    run_id = match.group(1)
+
+    # локальный YAML
+    yaml_path = os.path.join("tmp_params", yaml_name)
+    os.makedirs(os.path.dirname(yaml_path), exist_ok=True)
+    with open(yaml_path, "w") as f:
+        yaml.dump(params_config, f, sort_keys=False, allow_unicode=True)
+
+    # логируем в существующий run
+    client = MlflowClient()
+    client.log_artifact(run_id=run_id, local_path=yaml_path, artifact_path="params")
+    print(f"✅ Uploaded {yaml_name} to existing MLflow run {run_id}")
+
+
+# ---------------------------------------------------------------------
+# 1. CLI аргументы
+# ---------------------------------------------------------------------
+parser = argparse.ArgumentParser(description="Train or load PPO agent with skrl.")
+parser.add_argument("--load", type=str, default=None,
+                    help="Path or MLflow URI to the checkpoint to load (optional).")
+args = parser.parse_args()
+
+# ---------------------------------------------------------------------
+# 2. Загружаем .env и задаем seed
+# ---------------------------------------------------------------------
 load_dotenv()
+set_seed()
 
-# seed for reproducibility
-set_seed()  # e.g. `set_seed(42)` for fixed seed
-
-
-# define models (stochastic and deterministic models) using mixins
+# ---------------------------------------------------------------------
+# 3. Модели
+# ---------------------------------------------------------------------
 class Policy(GaussianMixin, Model):
     def __init__(self, observation_space, action_space, device, clip_actions=False,
                  clip_log_std=True, min_log_std=-20, max_log_std=2, reduction="sum"):
         Model.__init__(self, observation_space, action_space, device)
         GaussianMixin.__init__(self, clip_actions, clip_log_std, min_log_std, max_log_std, reduction)
 
-        self.net = nn.Sequential(nn.Linear(self.num_observations, 64),
-                                 nn.ReLU(),
-                                 nn.Linear(64, 64),
-                                 nn.ReLU(),
-                                 nn.Linear(64, self.num_actions))
+        self.net = nn.Sequential(
+            nn.Linear(self.num_observations, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, self.num_actions)
+        )
         self.log_std_parameter = nn.Parameter(torch.zeros(self.num_actions))
 
     def compute(self, inputs, role):
-        # Pendulum-v1 action_space is -2 to 2
         return 2 * torch.tanh(self.net(inputs["states"])), self.log_std_parameter, {}
 
 class Value(DeterministicMixin, Model):
@@ -46,99 +93,106 @@ class Value(DeterministicMixin, Model):
         Model.__init__(self, observation_space, action_space, device)
         DeterministicMixin.__init__(self, clip_actions)
 
-        self.net = nn.Sequential(nn.Linear(self.num_observations, 64),
-                                 nn.ReLU(),
-                                 nn.Linear(64, 64),
-                                 nn.ReLU(),
-                                 nn.Linear(64, 1))
+        self.net = nn.Sequential(
+            nn.Linear(self.num_observations, 64),
+            nn.ReLU(),
+            nn.Linear(64, 64),
+            nn.ReLU(),
+            nn.Linear(64, 1)
+        )
 
     def compute(self, inputs, role):
         return self.net(inputs["states"]), {}
 
 
-# load and wrap the gym environment.
-# note: the environment version may change depending on the gym version
+# ---------------------------------------------------------------------
+# 4. Среда
+# ---------------------------------------------------------------------
 try:
     env = gym.make_vec("Pendulum-v1", num_envs=4, render_mode="rgb_array")
 except gym.error.DeprecatedEnv as e:
-    env_id = [spec.id for spec in gym.envs.registry.all() if spec.id.startswith("Pendulum-v")][0]
+    env_id = [spec.id for spec in gym.envs.registry.all() if spec.id.startswith("Pendulum-v-")][0]
     print("Pendulum-v1 not found. Trying {}".format(env_id))
     env = gym.make_vec(env_id, num_envs=4, render_mode="rgb_array")
 
 log_dir = "logs/test-skrl-mlflow-" + str(time.time())
-
-# wrap the environment to record videos
-# https://gymnasium.farama.org/api/wrappers/vector_wrappers/#gymnasium.wrappers.vector.RecordVideo
 video_kwargs = {
     "video_folder": os.path.join(log_dir, "videos"),
     "name_prefix": "ppo-pendulum",
     "step_trigger": lambda step: step % 1000 == 0,
-    "video_length":200
-    }
+    "video_length": 200
+}
 env = gym.wrappers.vector.RecordVideo(env, **video_kwargs)
-
 env = wrap_env(env)
-
 device = env.device
 
-
-# instantiate a memory as rollout buffer (any memory can be used for this)
+# ---------------------------------------------------------------------
+# 5. Память и модели
+# ---------------------------------------------------------------------
 memory = RandomMemory(memory_size=1024, num_envs=env.num_envs, device=device)
 
+models = {
+    "policy": Policy(env.observation_space, env.action_space, device, clip_actions=True),
+    "value": Value(env.observation_space, env.action_space, device),
+}
 
-# instantiate the agent's models (function approximators).
-# PPO requires 2 models, visit its documentation for more details
-# https://skrl.readthedocs.io/en/latest/api/agents/ppo.html#models
-models = {}
-models["policy"] = Policy(env.observation_space, env.action_space, device, clip_actions=True)
-models["value"] = Value(env.observation_space, env.action_space, device)
-
-
-# configure and instantiate the agent (visit its documentation to see all the options)
-# https://skrl.readthedocs.io/en/latest/api/agents/ppo.html#configuration-and-hyperparameters
+# ---------------------------------------------------------------------
+# 6. Конфигурация агента PPO
+# ---------------------------------------------------------------------
 cfg = PPO_DEFAULT_CONFIG.copy()
-cfg["rollouts"] = 1024  # memory_size
-cfg["learning_epochs"] = 10
-cfg["mini_batches"] = 16
-cfg["discount_factor"] = 0.9
-cfg["lambda"] = 0.95
-cfg["learning_rate"] = 1e-4
-cfg["learning_rate_scheduler"] = KLAdaptiveRL
-cfg["learning_rate_scheduler_kwargs"] = {"kl_threshold": 0.008}
-cfg["grad_norm_clip"] = 0.5
-cfg["ratio_clip"] = 0.2
-cfg["value_clip"] = 0.2
-cfg["clip_predicted_values"] = False
-cfg["entropy_loss_scale"] = 0.0001
-cfg["value_loss_scale"] = 0.5
-cfg["kl_threshold"] = 0
-cfg["state_preprocessor"] = RunningStandardScaler
-cfg["state_preprocessor_kwargs"] = {"size": env.observation_space, "device": device}
-cfg["value_preprocessor"] = RunningStandardScaler
-cfg["value_preprocessor_kwargs"] = {"size": 1, "device": device}
-# logging to MLflow
-cfg["experiment"]["directory"] = os.path.abspath(log_dir)
-cfg["experiment"]["mlflow"] = True
-cfg["experiment"]["mlflow_kwargs"] = {"experiment_name": "test-skrl-mlflow"}
-cfg["experiment"]["video_kwargs"] = video_kwargs
-
-
-agent = PPO(models=models,
-            memory=memory,
-            cfg=cfg,
+params_config = {
+    "rollouts": 1024,
+    "learning_epochs": 10,
+    "mini_batches": 16,
+    "discount_factor": 0.9,
+    "lambda": 0.95,
+    "learning_rate": 1e-4,
+    "learning_rate_scheduler": KLAdaptiveRL,
+    "learning_rate_scheduler_kwargs": {"kl_threshold": 0.008},
+    "grad_norm_clip": 0.5,
+    "ratio_clip": 0.2,
+    "value_clip": 0.2,
+    "clip_predicted_values": False,
+    "entropy_loss_scale": 0.0001,
+    "value_loss_scale": 0.5,
+    "kl_threshold": 0,
+    "state_preprocessor": RunningStandardScaler,
+    "state_preprocessor_kwargs": {"size": env.observation_space, "device": device},
+    "value_preprocessor": RunningStandardScaler,
+    "value_preprocessor_kwargs": {"size": 1, "device": device},
+    "experiment": {
+        "directory": os.path.abspath(log_dir),
+        "mlflow": True,
+        "mlflow_kwargs": {"experiment_name": "test-skrl-mlflow"},
+        "video_kwargs": video_kwargs
+    }
+}
+cfg.update(params_config)
+# ---------------------------------------------------------------------
+# 7. Инициализация агента
+# ---------------------------------------------------------------------
+agent = PPO(models=models, memory=memory, cfg=cfg,
             observation_space=env.observation_space,
-            action_space=env.action_space,
-            device=device)
+            action_space=env.action_space, device=device)
+
+# ---------------------------------------------------------------------
+# 8. Если указан путь, загружаем чекпоинт
+# ---------------------------------------------------------------------
+if args.load:
+    print(f"Loading checkpoint from: {args.load}")
+    upload_agent_yaml_to_existing_run(args.load, params_config)
+    agent.load(args.load)
 
 
-# configure and instantiate the RL trainer
+# ---------------------------------------------------------------------
+# 9. Тренировка
+# ---------------------------------------------------------------------
 cfg_trainer = {"timesteps": 10000, "headless": True}
 trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=[agent])
-
-# start training
 trainer.train()
 
-# end MLflow run
+# ---------------------------------------------------------------------
+# 10. Завершение MLflow run
+# ---------------------------------------------------------------------
 if agent.cfg["experiment"]["mlflow"]:
-    import mlflow
     mlflow.end_run()
