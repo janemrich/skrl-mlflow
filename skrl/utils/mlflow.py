@@ -1,4 +1,5 @@
-from typing import Any, Optional
+import os
+from typing import Any, Optional, Tuple
 
 import mlflow
 import socket
@@ -76,3 +77,95 @@ def start_mlflow_run(run_id: Optional[str] = None,
                             tags=tags,
                             description=description,
                             log_system_metrics=log_system_metrics)
+
+
+MLFLOW_ARTIFACT_PREFIX = "mlflow-artifacts:/"
+
+
+def is_mlflow_artifact_uri(uri: str) -> bool:
+    """Return True if the string looks like an MLflow artifact URI."""
+    return isinstance(uri, str) and uri.startswith(MLFLOW_ARTIFACT_PREFIX)
+
+
+def _parse_mlflow_artifact_uri(artifact_uri: str) -> Tuple[str, str, str]:
+    """
+    Parse an MLflow artifact URI.
+
+    Example input:
+        mlflow-artifacts:/63/5ba2f4...fe1/artifacts/checkpoints/agent_108000.pt
+
+    Returns:
+        (experiment_id, run_id, artifact_rel_path)
+
+        artifact_rel_path is the path **under** the 'artifacts/' root:
+            "checkpoints/agent_108000.pt"
+    """
+    if not is_mlflow_artifact_uri(artifact_uri):
+        raise ValueError(f"Not an MLflow artifact URI: {artifact_uri!r}")
+
+    # Strip the scheme prefix
+    no_prefix = artifact_uri.replace(MLFLOW_ARTIFACT_PREFIX, "", 1)
+    # no_prefix: "<exp_id>/<run_id>/artifacts/checkpoints/agent_108000.pt"
+
+    segments = no_prefix.split("/")
+    if len(segments) < 4 or segments[2] != "artifacts":
+        raise ValueError(f"Unexpected MLflow artifact URI format: {artifact_uri!r}")
+
+    experiment_id = segments[0]
+    run_id = segments[1]
+    # everything after ".../artifacts/"
+    artifact_rel_path = "/".join(segments[3:])
+
+    return experiment_id, run_id, artifact_rel_path
+
+
+def download_mlflow_with_params(
+    artifact_file_uri: str,
+    dst_root: str = "mlflow-downloads",
+    params_relative_path: str = "params/agent.yaml",
+) -> Tuple[str, Optional[str]]:
+    """
+    Input:
+        artifact_file_uri:
+            mlflow-artifacts:/<exp_id>/<run_id>/artifacts/checkpoints/agent_108000.pt
+
+    Output:
+        (local_checkpoint_path, local_params_path_or_None)
+
+    Local folder structure (under dst_root):
+        <dst_root>/<run_id>/checkpoints/...
+        <dst_root>/<run_id>/params/...
+
+    Note: we mirror the *artifact* structure under <dst_root>/<run_id>/.
+    """
+    _, run_id, artifact_checkpoint_path = _parse_mlflow_artifact_uri(artifact_file_uri)
+
+    client = mlflow.MlflowClient()
+
+    # Base directory for this run’s downloads
+    run_dir = os.path.join(dst_root, run_id)
+    os.makedirs(run_dir, exist_ok=True)
+
+    # Download checkpoint
+    # This will place the file(s) under:
+    #   <dst_root>/<run_id>/<artifact_checkpoint_path>
+    local_ckpt = client.download_artifacts(
+        run_id=run_id,
+        path=artifact_checkpoint_path,
+        dst_path=run_dir,
+    )
+
+    # Download params (optional)
+    local_params: Optional[str] = None
+    try:
+        local_params = client.download_artifacts(
+            run_id=run_id,
+            path=params_relative_path,
+            dst_path=run_dir,
+        )
+    except mlflow.MlflowException as e:
+        # Soft-fail if there is no params/agent.yaml (or any other error)
+        print(f"⚠️ Failed to download {params_relative_path} for run {run_id}: {e}")
+        local_params = None
+
+    return local_ckpt, local_params
