@@ -26,35 +26,35 @@ from mlflow import MlflowClient
 
 def upload_agent_yaml_to_existing_run(load_uri: str, params_config: dict, yaml_name="agent.yaml"):
     """
-    Добавляет agent.yaml в тот же MLflow run, откуда взят checkpoint.
-    Пример:
+    Adding agent.yaml to the same MLflow run, where we got the checkpoint from
+    Example:
         mlflow-artifacts:/50/90a2668961164475a08682ed44533ac5/artifacts/checkpoints/agent_9000.pt
     """
     if not load_uri.startswith("mlflow-artifacts:/"):
-        print("❌ Не MLflow путь, пропускаю загрузку параметров.")
+        print("❌ Skipping params, wrong path")
         return
 
-    # достаём run_id из URI
+    # getting run_id from URI
     match = re.search(r"mlflow-artifacts:/\d+/([0-9a-f]+?)/artifacts", load_uri)
     if not match:
-        print(f"❌ Не удалось извлечь run_id из {load_uri}")
+        print(f"❌ Failed to extract run_id from {load_uri}")
         return
     run_id = match.group(1)
 
-    # локальный YAML
+    # local YAML
     yaml_path = os.path.join("tmp_params", yaml_name)
     os.makedirs(os.path.dirname(yaml_path), exist_ok=True)
     with open(yaml_path, "w") as f:
         yaml.dump(params_config, f, sort_keys=False, allow_unicode=True)
 
-    # логируем в существующий run
+    # logging to existing run
     client = MlflowClient()
     client.log_artifact(run_id=run_id, local_path=yaml_path, artifact_path="params")
     print(f"✅ Uploaded {yaml_name} to existing MLflow run {run_id}")
 
 
 # ---------------------------------------------------------------------
-# 1. CLI аргументы
+# 1. CLI args
 # ---------------------------------------------------------------------
 parser = argparse.ArgumentParser(description="Train or load PPO agent with skrl.")
 parser.add_argument("--load", type=str, default=None,
@@ -62,13 +62,13 @@ parser.add_argument("--load", type=str, default=None,
 args = parser.parse_args()
 
 # ---------------------------------------------------------------------
-# 2. Загружаем .env и задаем seed
+# 2. Loading .env and settign seed
 # ---------------------------------------------------------------------
 load_dotenv()
 set_seed()
 
 # ---------------------------------------------------------------------
-# 3. Модели
+# 3. Models
 # ---------------------------------------------------------------------
 class Policy(GaussianMixin, Model):
     def __init__(self, observation_space, action_space, device, clip_actions=False,
@@ -106,7 +106,7 @@ class Value(DeterministicMixin, Model):
 
 
 # ---------------------------------------------------------------------
-# 4. Среда
+# 4. Env
 # ---------------------------------------------------------------------
 try:
     env = gym.make_vec("Pendulum-v1", num_envs=4, render_mode="rgb_array")
@@ -127,7 +127,7 @@ env = wrap_env(env)
 device = env.device
 
 # ---------------------------------------------------------------------
-# 5. Память и модели
+# 5. Memory and models
 # ---------------------------------------------------------------------
 memory = RandomMemory(memory_size=1024, num_envs=env.num_envs, device=device)
 
@@ -137,7 +137,7 @@ models = {
 }
 
 # ---------------------------------------------------------------------
-# 6. Конфигурация агента PPO
+# 6. Config agent PPO
 # ---------------------------------------------------------------------
 cfg = PPO_DEFAULT_CONFIG.copy()
 params_config = {
@@ -169,14 +169,14 @@ params_config = {
 }
 cfg.update(params_config)
 # ---------------------------------------------------------------------
-# 7. Инициализация агента
+# 7. Agent init
 # ---------------------------------------------------------------------
 agent = PPO(models=models, memory=memory, cfg=cfg,
             observation_space=env.observation_space,
             action_space=env.action_space, device=device)
 
 # ---------------------------------------------------------------------
-# 8. Если указан путь, загружаем чекпоинт
+# 8. If path specified - load checkpoint
 # ---------------------------------------------------------------------
 if args.load:
     print(f"Loading checkpoint from: {args.load}")
@@ -185,14 +185,14 @@ if args.load:
 
 
 # ---------------------------------------------------------------------
-# 9. Тренировка
+# 9. Training
 # ---------------------------------------------------------------------
 cfg_trainer = {"timesteps": 10000, "headless": True}
 trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=[agent])
 trainer.train()
 
 # ---------------------------------------------------------------------
-# 10. Завершение MLflow run
+# 10. Ending MLflow run
 # ---------------------------------------------------------------------
 if agent.cfg["experiment"]["mlflow"]:
     mlflow.end_run()
