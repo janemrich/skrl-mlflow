@@ -84,7 +84,6 @@ MLFLOW_ARTIFACT_PREFIX = "mlflow-artifacts:/"
 
 
 def is_mlflow_artifact(path: str) -> bool:
-    """True, если строка выглядит как MLflow artifact URI."""
     return isinstance(path, str) and path.startswith(MLFLOW_ARTIFACT_PREFIX)
 
 
