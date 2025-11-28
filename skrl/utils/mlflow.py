@@ -1,9 +1,12 @@
 import os
+import re
 from typing import Any, Optional
 
 import mlflow
 import socket
 import sys
+
+import yaml
 
 
 def start_mlflow_run(run_id: Optional[str] = None,
@@ -85,6 +88,32 @@ MLFLOW_ARTIFACT_PREFIX = "mlflow-artifacts:/"
 
 def is_mlflow_artifact(path: str) -> bool:
     return isinstance(path, str) and path.startswith(MLFLOW_ARTIFACT_PREFIX)
+
+
+
+def upload_agent_yaml_to_existing_run(load_uri: str, params_config: dict, yaml_name="agent.yaml"):
+    """
+    Adding agent.yaml to the same MLflow run, where we got the checkpoint from
+    Example:
+        mlflow-artifacts:/50/90a2668961164475a08682ed44533ac5/artifacts/checkpoints/agent_9000.pt
+    """
+    if not load_uri.startswith("mlflow-artifacts:/"):
+        print("❌ Skipping params, wrong path")
+        return
+
+    # getting run_id from URI
+    run_id = re.search(r"mlflow-artifacts:/\d+/([0-9a-f]+?)/artifacts", load_uri).group(1)
+    # local YAML
+    yaml_path = os.path.join("tmp_params", yaml_name)
+    os.makedirs(os.path.dirname(yaml_path), exist_ok=True)
+    with open(yaml_path, "w") as f:
+        yaml.dump(params_config, f, sort_keys=False, allow_unicode=True)
+
+    # logging to existing run
+    client = mlflow.MlflowClient()
+    client.log_artifact(run_id=run_id, local_path=yaml_path, artifact_path="params")
+    print(f"✅ Uploaded {yaml_name} to existing MLflow run {run_id}")
+
 
 
 def download_mlflow_with_params(artifact_file_uri: str) -> tuple[str, str]:

@@ -193,7 +193,8 @@ class Agent:
 
             # log config
             mlflow_config = {**self.cfg, **trainer_cfg}
-            mlflow.log_params(mlflow_config)
+            
+            # uploading the yaml HRERE
 
         # main entry to log data for consumption and visualization by TensorBoard
         if self.write_interval == "auto":
@@ -445,7 +446,7 @@ class Agent:
         torch.save(modules, path)
 
     
-    def load(self, path: str) -> None:
+    def load(self, path: str, params_config) -> None:
         """
         Load the model from either:
         - a normal local file path
@@ -460,6 +461,7 @@ class Agent:
         # 1. Detect MLflow artifact URIs
         # 2. If MLflow path: download checkpoint + params
         # ---------------------------------------------
+        mlflow.upload_agent_yaml_to_existing_run(path, params_config)
         if mlflow.is_mlflow_artifact(path):
             # Import here to avoid circular imports
             local_ckpt, local_params = mlflow.download_mlflow_with_params(path)

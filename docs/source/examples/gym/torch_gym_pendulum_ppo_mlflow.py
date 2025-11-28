@@ -19,39 +19,7 @@ from skrl.resources.preprocessors.torch import RunningStandardScaler
 from skrl.resources.schedulers.torch import KLAdaptiveRL
 from skrl.trainers.torch import SequentialTrainer
 from skrl.utils import mlflow, set_seed
-
-
-import os, re, yaml
-from mlflow import MlflowClient
-
-def upload_agent_yaml_to_existing_run(load_uri: str, params_config: dict, yaml_name="agent.yaml"):
-    """
-    Adding agent.yaml to the same MLflow run, where we got the checkpoint from
-    Example:
-        mlflow-artifacts:/50/90a2668961164475a08682ed44533ac5/artifacts/checkpoints/agent_9000.pt
-    """
-    if not load_uri.startswith("mlflow-artifacts:/"):
-        print("❌ Skipping params, wrong path")
-        return
-
-    # getting run_id from URI
-    match = re.search(r"mlflow-artifacts:/\d+/([0-9a-f]+?)/artifacts", load_uri)
-    if not match:
-        print(f"❌ Failed to extract run_id from {load_uri}")
-        return
-    run_id = match.group(1)
-
-    # local YAML
-    yaml_path = os.path.join("tmp_params", yaml_name)
-    os.makedirs(os.path.dirname(yaml_path), exist_ok=True)
-    with open(yaml_path, "w") as f:
-        yaml.dump(params_config, f, sort_keys=False, allow_unicode=True)
-
-    # logging to existing run
-    client = MlflowClient()
-    client.log_artifact(run_id=run_id, local_path=yaml_path, artifact_path="params")
-    print(f"✅ Uploaded {yaml_name} to existing MLflow run {run_id}")
-
+import os, yaml
 
 # ---------------------------------------------------------------------
 # 1. CLI args
@@ -175,12 +143,12 @@ agent = PPO(models=models, memory=memory, cfg=cfg,
             observation_space=env.observation_space,
             action_space=env.action_space, device=device)
 
+
 # ---------------------------------------------------------------------
 # 8. If path specified - load checkpoint
 # ---------------------------------------------------------------------
 if args.load:
     print(f"Loading checkpoint from: {args.load}")
-    upload_agent_yaml_to_existing_run(args.load, params_config)
     agent.load(args.load)
 
 
@@ -189,6 +157,7 @@ if args.load:
 # ---------------------------------------------------------------------
 cfg_trainer = {"timesteps": 10000, "headless": True}
 trainer = SequentialTrainer(cfg=cfg_trainer, env=env, agents=[agent])
+mlflow.log_params(params_config)
 trainer.train()
 
 # ---------------------------------------------------------------------
