@@ -1,3 +1,4 @@
+import tempfile
 from typing import Any, Mapping, Optional, Tuple, Union
 
 import collections
@@ -5,6 +6,7 @@ import copy
 import datetime
 import os
 import gymnasium
+from mlflow import MlflowClient, MlflowException
 from packaging import version
 
 import numpy as np
@@ -12,7 +14,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 
 from skrl import config, logger
-from skrl.utils import start_mlflow_run
+from skrl.utils import mlflow, start_mlflow_run
 from skrl.memories.torch import Memory
 from skrl.models.torch import Model
 
@@ -191,7 +193,8 @@ class Agent:
 
             # log config
             mlflow_config = {**self.cfg, **trainer_cfg}
-            mlflow.log_params(mlflow_config)
+            
+            # uploading the yaml HRERE
 
         # main entry to log data for consumption and visualization by TensorBoard
         if self.write_interval == "auto":
@@ -442,18 +445,41 @@ class Agent:
             modules[name] = self._get_internal_value(module)
         torch.save(modules, path)
 
-    def load(self, path: str) -> None:
-        """Load the model from the specified path
-
-        The final storage device is determined by the constructor of the model
-
-        :param path: Path to load the model from
-        :type path: str
+    
+    def load(self, path: str, params_config) -> None:
         """
+        Load the model from either:
+        - a normal local file path
+        - an MLflow artifact URI (auto-detected)
+
+        Supported MLflow formats:
+            mlflow-artifacts:/...
+            runs:/<run_id>/path/to/file
+        """
+
+        # ---------------------------------------------
+        # 1. Detect MLflow artifact URIs
+        # 2. If MLflow path: download checkpoint + params
+        # ---------------------------------------------
+        mlflow.upload_agent_yaml_to_existing_run(path, params_config)
+        if mlflow.is_mlflow_artifact(path):
+            # Import here to avoid circular imports
+            local_ckpt, local_params = mlflow.download_mlflow_with_params(path)
+            # Replace "path" with real local path to .pt
+            path = local_ckpt
+
+        # ---------------------------------------------
+        # 3. Now `path` MUST be a local .pt file.
+        #    Load as usual.
+        # ---------------------------------------------
         if version.parse(torch.__version__) >= version.parse("1.13"):
-            modules = torch.load(path, map_location=self.device, weights_only=False)  # prevent torch:FutureWarning
+            modules = torch.load(path, map_location=self.device, weights_only=False)
         else:
             modules = torch.load(path, map_location=self.device)
+
+        # ---------------------------------------------
+        # 4. Same logic as original Agent.load()
+        # ---------------------------------------------
         if type(modules) is dict:
             for name, data in modules.items():
                 module = self.checkpoint_modules.get(name, None)
@@ -465,7 +491,9 @@ class Agent:
                     else:
                         raise NotImplementedError
                 else:
-                    logger.warning(f"Cannot load the {name} module. The agent doesn't have such an instance")
+                    logger.warning(
+                        f"Cannot load the {name} module. The agent doesn't have such an instance"
+                    )
 
     def migrate(
         self,

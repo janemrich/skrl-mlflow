@@ -1,8 +1,12 @@
+import os
+import re
 from typing import Any, Optional
 
 import mlflow
 import socket
 import sys
+
+import yaml
 
 
 def start_mlflow_run(run_id: Optional[str] = None,
@@ -76,3 +80,112 @@ def start_mlflow_run(run_id: Optional[str] = None,
                             tags=tags,
                             description=description,
                             log_system_metrics=log_system_metrics)
+
+
+
+MLFLOW_ARTIFACT_PREFIX = "mlflow-artifacts:/"
+
+
+def is_mlflow_artifact(path: str) -> bool:
+    return isinstance(path, str) and path.startswith(MLFLOW_ARTIFACT_PREFIX)
+
+
+
+def upload_agent_yaml_to_existing_run(load_uri: str, params_config: dict, yaml_name="agent.yaml"):
+    """
+    Adding agent.yaml to the same MLflow run, where we got the checkpoint from
+    Example:
+        mlflow-artifacts:/50/90a2668961164475a08682ed44533ac5/artifacts/checkpoints/agent_9000.pt
+    """
+    if not load_uri.startswith("mlflow-artifacts:/"):
+        print("❌ Skipping params, wrong path")
+        return
+
+    # getting run_id from URI
+    run_id = re.search(r"mlflow-artifacts:/\d+/([0-9a-f]+?)/artifacts", load_uri).group(1)
+    # local YAML
+    yaml_path = os.path.join("tmp_params", yaml_name)
+    os.makedirs(os.path.dirname(yaml_path), exist_ok=True)
+    with open(yaml_path, "w") as f:
+        yaml.dump(params_config, f, sort_keys=False, allow_unicode=True)
+
+    # logging to existing run
+    client = mlflow.MlflowClient()
+    client.log_artifact(run_id=run_id, local_path=yaml_path, artifact_path="params")
+    print(f"✅ Uploaded {yaml_name} to existing MLflow run {run_id}")
+
+
+
+def download_mlflow_with_params(artifact_file_uri: str) -> tuple[str, str]:
+    """
+    Input:
+        mlflow-artifacts:/<exp_id>/<run_id>/artifacts/checkpoints/agent_108000.pt
+
+    Output:
+        (local_checkpoint_path, local_params_path)
+
+    Local folder structure:
+        mlflow-downloads/<run_id>/checkpoints/...
+        mlflow-downloads/<run_id>/params/params.yaml
+    """
+
+    client = mlflow.MlflowClient()
+
+    # Example:
+    # artifact_file_uri =
+    #   "mlflow-artifacts:/63/5ba2f4...fe1/artifacts/checkpoints/agent_108000.pt"
+
+    # Strip the "mlflow-artifacts:/" prefix
+    no_prefix = artifact_file_uri.replace(MLFLOW_ARTIFACT_PREFIX, "")
+    # Now: "63/5ba2f4...fe1/artifacts/checkpoints/agent_108000.pt"
+
+    segments = no_prefix.split("/")
+    # segments[0] = experiment_id (e.g. "63")
+    # segments[1] = run_id (e.g. "5ba2f4...fe1")
+    run_id = segments[1]
+
+    # Find part after ".../artifacts/"
+    idx = artifact_file_uri.index("/artifacts/")
+    tail = artifact_file_uri[idx + len("/artifacts/"):]
+    # tail example: "checkpoints/agent_108000.pt"
+
+    parts = tail.split("/")
+    subfolder = parts[0]      # "checkpoints"
+    filename = parts[-1]      # "agent_108000.pt"
+
+    # Build local directory structure:
+    # mlflow-downloads/<run_id>/checkpoints
+    # mlflow-downloads/<run_id>/params
+    run_dir = os.path.join("mlflow-downloads", run_id)
+    checkpoints_dir = os.path.join(run_dir, "artifacts/checkpoints")
+    params_dir = os.path.join(run_dir, "artifacts/params")
+
+    os.makedirs(checkpoints_dir, exist_ok=True)
+    os.makedirs(params_dir, exist_ok=True)
+
+    # Paths inside MLflow artifacts (relative to the run's artifact root)
+    artifact_checkpoint_path = f"{subfolder}/{filename}"      # "checkpoints/agent_108000.pt"
+    artifact_params_path = "params/agent.yaml"
+
+    print(1, checkpoints_dir, artifact_checkpoint_path)
+    # Download checkpoint
+    local_ckpt = client.download_artifacts(
+        run_id=run_id,
+        path=artifact_checkpoint_path,
+        dst_path=checkpoints_dir
+    )
+    print(2, params_dir, artifact_params_path)
+
+    # Download params.yaml
+    try:
+        local_params = client.download_artifacts(
+            run_id=run_id,
+            path="params/agent.yaml",
+            dst_path=params_dir
+        )
+
+    except mlflow.MlflowException as e:
+        print(f"⚠️ Failed to download params.yaml: {e}")
+        local_params = None
+
+    return local_ckpt, local_params
